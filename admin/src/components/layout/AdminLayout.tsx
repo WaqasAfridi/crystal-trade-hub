@@ -7,11 +7,16 @@ import {
 import { useAuth, can } from "../../store/auth";
 import { cn } from "../../lib/utils";
 
-const NAV: Array<{
-  section?: string;
-  to: string; label: string; icon: any;
+type NavSection = { section: string; to?: never; label?: never; icon?: never; roles?: never };
+type NavItem = {
+  section?: never;
+  to: string;
+  label: string;
+  icon: any;
   roles?: Array<"SUPER_ADMIN" | "ADMIN" | "MODERATOR" | "SUPPORT">;
-}> = [
+};
+
+const NAV: Array<NavSection | NavItem> = [
   { to: "/",             label: "Dashboard",        icon: LayoutDashboard },
   { section: "Users" },
   { to: "/users",        label: "All Users",        icon: Users },
@@ -22,20 +27,20 @@ const NAV: Array<{
   { to: "/buy-orders",   label: "Buy Orders",       icon: ShoppingCart },
   { to: "/transactions", label: "Transactions",     icon: History },
   { section: "Catalog" },
-  { to: "/currencies",       label: "Currencies",       icon: Coins,  roles: ["SUPER_ADMIN", "ADMIN"] },
-  { to: "/deposit-addresses",label: "Deposit Addresses",icon: MapPin, roles: ["SUPER_ADMIN", "ADMIN"] },
-  { to: "/ico",              label: "ICO Projects",     icon: Rocket, roles: ["SUPER_ADMIN", "ADMIN"] },
-  { to: "/earn",             label: "Earn Products",    icon: TrendingUp, roles: ["SUPER_ADMIN", "ADMIN"] },
-  { to: "/finance",          label: "Finance Products", icon: Wallet, roles: ["SUPER_ADMIN", "ADMIN"] },
-  { to: "/lottery",          label: "Lottery",          icon: Ticket, roles: ["SUPER_ADMIN", "ADMIN"] },
+  { to: "/currencies",        label: "Currencies",        icon: Coins,      roles: ["SUPER_ADMIN", "ADMIN"] },
+  { to: "/deposit-addresses", label: "Deposit Addresses", icon: MapPin,     roles: ["SUPER_ADMIN", "ADMIN"] },
+  { to: "/ico",               label: "ICO Projects",      icon: Rocket,     roles: ["SUPER_ADMIN", "ADMIN"] },
+  { to: "/earn",              label: "Earn Products",     icon: TrendingUp, roles: ["SUPER_ADMIN", "ADMIN"] },
+  { to: "/finance",           label: "Finance Products",  icon: Wallet,     roles: ["SUPER_ADMIN", "ADMIN"] },
+  { to: "/lottery",           label: "Lottery",           icon: Ticket,     roles: ["SUPER_ADMIN", "ADMIN"] },
   { section: "Comms" },
-  { to: "/announcements",label: "Announcements",    icon: Megaphone, roles: ["SUPER_ADMIN", "ADMIN"] },
-  { to: "/notifications",label: "Broadcast",        icon: Bell,      roles: ["SUPER_ADMIN", "ADMIN"] },
-  { to: "/tickets",      label: "Support Tickets",  icon: MessageCircle },
+  { to: "/announcements", label: "Announcements",   icon: Megaphone,     roles: ["SUPER_ADMIN", "ADMIN"] },
+  { to: "/notifications", label: "Broadcast",       icon: Bell,          roles: ["SUPER_ADMIN", "ADMIN"] },
+  { to: "/tickets",       label: "Support Tickets", icon: MessageCircle },
   { section: "System" },
-  { to: "/settings",     label: "Site Settings",    icon: Settings, roles: ["SUPER_ADMIN", "ADMIN"] },
-  { to: "/admins",       label: "Admin Users",      icon: ShieldCheck, roles: ["SUPER_ADMIN"] },
-  { to: "/audit-log",    label: "Audit Log",        icon: History,  roles: ["SUPER_ADMIN", "ADMIN"] },
+  { to: "/settings",  label: "Site Settings", icon: Settings,   roles: ["SUPER_ADMIN", "ADMIN"] },
+  { to: "/admins",    label: "Admin Users",   icon: ShieldCheck, roles: ["SUPER_ADMIN"] },
+  { to: "/audit-log", label: "Audit Log",     icon: History,    roles: ["SUPER_ADMIN", "ADMIN"] },
 ];
 
 export default function AdminLayout() {
