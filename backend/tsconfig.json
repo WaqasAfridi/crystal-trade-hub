@@ -12,10 +12,10 @@
     "resolveJsonModule": true,
     "declaration": false,
     "sourceMap": true,
-    "moduleResolution": "node",
-    "baseUrl": "./src",
+    "moduleResolution": "node10",
+    "ignoreDeprecations": "5.0",
     "paths": {
-      "@/*": ["*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src/**/*"],
