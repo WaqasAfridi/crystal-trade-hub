@@ -25,6 +25,7 @@ export const buildApp = () => {
     cors({
       origin: (origin, cb) => {
         if (!origin) return cb(null, true);
+        if (env.corsOrigins.includes("*")) return cb(null, true);
         if (env.corsOrigins.includes(origin)) return cb(null, true);
         return cb(new Error(`CORS blocked: ${origin}`));
       },

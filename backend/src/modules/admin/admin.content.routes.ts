@@ -423,7 +423,7 @@ router.post(
     await prisma.notification.createMany({
       data: targetIds.map((uid) => ({ userId: uid, title, body, type, link })),
     });
-    await audit(req.adminId!, "NOTIF_BROADCAST", null, { count: targetIds.length, title }, req.ip);
+    await audit(req.adminId!, "NOTIF_BROADCAST", undefined, { count: targetIds.length, title }, req.ip);
     return ok(res, { sent: targetIds.length });
   }),
 );
@@ -450,7 +450,7 @@ router.patch(
     for (const [k, v] of Object.entries(updates)) {
       await setSetting(k, v);
     }
-    await audit(req.adminId!, "SETTINGS_UPDATE", null, updates, req.ip);
+    await audit(req.adminId!, "SETTINGS_UPDATE", undefined, updates, req.ip);
     return ok(res, { ok: true, updated: Object.keys(updates) });
   }),
 );
