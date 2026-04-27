@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+﻿import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Users, FileCheck2, ArrowDownToLine, ArrowUpFromLine,
   ShoppingCart, Coins, MapPin, Rocket, TrendingUp, Wallet, Ticket,
@@ -38,9 +38,9 @@ const NAV: Array<NavSection | NavItem> = [
   { to: "/notifications", label: "Broadcast",       icon: Bell,          roles: ["SUPER_ADMIN", "ADMIN"] },
   { to: "/tickets",       label: "Support Tickets", icon: MessageCircle },
   { section: "System" },
-  { to: "/settings",  label: "Site Settings", icon: Settings,   roles: ["SUPER_ADMIN", "ADMIN"] },
+  { to: "/settings",  label: "Site Settings", icon: Settings,    roles: ["SUPER_ADMIN", "ADMIN"] },
   { to: "/admins",    label: "Admin Users",   icon: ShieldCheck, roles: ["SUPER_ADMIN"] },
-  { to: "/audit-log", label: "Audit Log",     icon: History,    roles: ["SUPER_ADMIN", "ADMIN"] },
+  { to: "/audit-log", label: "Audit Log",     icon: History,     roles: ["SUPER_ADMIN", "ADMIN"] },
 ];
 
 export default function AdminLayout() {
@@ -49,7 +49,6 @@ export default function AdminLayout() {
 
   return (
     <div className="flex h-screen bg-bg text-text">
-      {/* ── Sidebar ─────────────────────────────────────────── */}
       <aside className="w-64 border-r border-border bg-surface flex flex-col">
         <div className="px-5 py-4 border-b border-border">
           <div className="text-sm font-semibold">Crystal Trade Hub</div>
@@ -60,25 +59,28 @@ export default function AdminLayout() {
           {NAV.map((item, i) => {
             if (item.section) {
               return (
-                <div key={`s-${i}`} className="px-5 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                <div key={"s-" + i} className="px-5 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted">
                   {item.section}
                 </div>
               );
             }
-            if (item.roles && !can(user?.role, ...item.roles)) return null;
-            const Icon = item.icon;
+            const navItem = item as NavItem;
+            if (navItem.roles && !can(user?.role, ...navItem.roles)) return null;
+            const Icon = navItem.icon;
             return (
               <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === "/"}
+                key={navItem.to}
+                to={navItem.to}
+                end={navItem.to === "/"}
                 className={({ isActive }) => cn(
                   "flex items-center gap-3 px-5 py-2 text-sm",
-                  isActive ? "bg-elevated text-text border-l-2 border-white" : "text-muted hover:bg-elevated hover:text-text",
+                  isActive
+                    ? "bg-elevated text-text border-l-2 border-white"
+                    : "text-muted hover:bg-elevated hover:text-text",
                 )}
               >
                 <Icon className="w-4 h-4 shrink-0" />
-                <span>{item.label}</span>
+                <span>{navItem.label}</span>
               </NavLink>
             );
           })}
@@ -97,7 +99,6 @@ export default function AdminLayout() {
         </div>
       </aside>
 
-      {/* ── Main ─────────────────────────────────────────── */}
       <main className="flex-1 overflow-y-auto">
         <Outlet />
       </main>
