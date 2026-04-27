@@ -1,0 +1,633 @@
+// =====================================================================
+//  Crystal Trade Hub — Prisma schema
+//  All tables for users, finances, trading, products, admin, settings
+// ---------------------------------------------------------------------
+//  Default datasource: SQLite (file-based, zero install).
+//  To switch to PostgreSQL or MySQL: change `provider` + `DATABASE_URL`
+//  in .env, then run `npx prisma migrate dev`.
+// =====================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// USERS & AUTH
+// ─────────────────────────────────────────────────────────────────────
+
+model User {
+  id                 String    @id @default(cuid())
+  email              String?   @unique
+  phone              String?   @unique
+  username           String?   @unique
+  passwordHash       String
+  withdrawPasswordHash String?
+  inviteCode         String    @unique           // this user's own code (share to invite others)
+  invitedById        String?                     // who invited me
+  invitedBy          User?     @relation("Referrals", fields: [invitedById], references: [id])
+  invitees           User[]    @relation("Referrals")
+  status             String     @default("ACTIVE")
+  emailVerified      Boolean   @default(false)
+  phoneVerified      Boolean   @default(false)
+  twoFactorEnabled   Boolean   @default(false)
+  twoFactorSecret    String?
+  vipLevel           Int       @default(0)
+  avatarUrl          String?
+  country            String?
+  language           String?   @default("en")
+  lastLoginAt        DateTime?
+  lastLoginIp        String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  kyc                Kyc?
+  wallets            Wallet[]
+  deposits           Deposit[]
+  withdrawals        Withdrawal[]
+  transfers          Transfer[]
+  conversions        Conversion[]
+  spotOrders         SpotOrder[]
+  futuresOrders      FuturesOrder[]
+  trades             Trade[]
+  icoSubscriptions   IcoSubscription[]
+  earnSubscriptions  EarnSubscription[]
+  financeSubscriptions FinanceSubscription[]
+  lotteryEntries     LotteryEntry[]
+  rewards            Reward[]
+  notifications      Notification[]
+  loginHistory       LoginHistory[]
+  supportTickets     SupportTicket[]
+  buyOrders          BuyOrder[]
+}
+
+
+
+model LoginHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ip        String?
+  userAgent String?
+  device    String?
+  location  String?
+  success   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// KYC
+// ─────────────────────────────────────────────────────────────────────
+
+model Kyc {
+  id               String     @id @default(cuid())
+  userId           String     @unique
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status           String     @default("PENDING")
+  country          String
+  documentType     String                     // ID, PASSPORT, DRIVER_LICENSE
+  fullName         String
+  dateOfBirth      DateTime
+  idNumber         String
+  frontImagePath   String                     // server-relative file path
+  backImagePath    String?
+  selfieImagePath  String?
+  rejectionReason  String?
+  reviewedById     String?                    // admin id who reviewed
+  reviewedAt       DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+}
+
+
+
+// ─────────────────────────────────────────────────────────────────────
+// CURRENCIES / COINS
+// ─────────────────────────────────────────────────────────────────────
+
+model Currency {
+  id              String   @id @default(cuid())
+  symbol          String   @unique           // e.g., BTC, USDT
+  name            String                     // e.g., Bitcoin
+  type            String   @default("crypto") // crypto | fiat | stock | fx
+  iconUrl         String?
+  decimals        Int      @default(8)
+  withdrawEnabled Boolean  @default(true)
+  depositEnabled  Boolean  @default(true)
+  tradeEnabled    Boolean  @default(true)
+  // Admin-managed price (optional fallback when no live feed). USD value of 1 unit.
+  priceUsd        Float    @default(0)
+  // Withdraw limits
+  minWithdraw     Float    @default(0)
+  maxWithdraw     Float    @default(0)
+  withdrawFee     Float    @default(0)        // flat
+  withdrawFeePct  Float    @default(0)        // percentage 0-100
+  // Networks supported (JSON array as string for SQLite compatibility)
+  networks        String   @default("[]")     // e.g., '["TRC20","ERC20","BEP20"]'
+  sortOrder       Int      @default(0)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  wallets         Wallet[]
+  depositAddresses PlatformDepositAddress[]
+}
+
+// Platform-controlled deposit addresses shown to all users (or per-user via UserDepositAddress)
+model PlatformDepositAddress {
+  id         String   @id @default(cuid())
+  currencyId String
+  currency   Currency @relation(fields: [currencyId], references: [id], onDelete: Cascade)
+  network    String                     // TRC20, ERC20, etc.
+  address    String
+  qrUrl      String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([currencyId, network])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// WALLETS  (per-user, per-currency, per-account-type)
+// ─────────────────────────────────────────────────────────────────────
+
+model Wallet {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currencyId  String
+  currency    Currency   @relation(fields: [currencyId], references: [id])
+  accountType String      @default("SPOT")
+  balance     Float      @default(0)        // available
+  locked      Float      @default(0)        // in open orders / pending withdrawals
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([userId, currencyId, accountType])
+  @@index([userId])
+}
+
+
+
+// ─────────────────────────────────────────────────────────────────────
+// DEPOSITS
+// ─────────────────────────────────────────────────────────────────────
+
+model Deposit {
+  id           String        @id @default(cuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currencySymbol String                    // denormalized for fast listing
+  amount       Float
+  fee          Float         @default(0)
+  network      String?
+  txHash       String?
+  fromAddress  String?
+  toAddress    String?
+  status       String        @default("PENDING")
+  notes        String?
+  reviewedById String?
+  reviewedAt   DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+
+
+// ─────────────────────────────────────────────────────────────────────
+// WITHDRAWALS
+// ─────────────────────────────────────────────────────────────────────
+
+model Withdrawal {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currencySymbol String
+  amount       Float
+  fee          Float    @default(0)
+  netAmount    Float                       // amount - fee
+  network      String?
+  toAddress    String
+  txHash       String?
+  status       String   @default("PENDING")
+  rejectionReason String?
+  reviewedById String?
+  reviewedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// TRANSFERS  (between own accounts: SPOT <-> FUTURES <-> EARN, etc.)
+// ─────────────────────────────────────────────────────────────────────
+
+model Transfer {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currencySymbol String
+  amount       Float
+  fromAccount  String
+  toAccount    String
+  status       String      @default("COMPLETED")
+  createdAt    DateTime    @default(now())
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// CONVERSIONS  (crypto-to-crypto swap)
+// ─────────────────────────────────────────────────────────────────────
+
+model Conversion {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromSymbol   String
+  toSymbol     String
+  fromAmount   Float
+  toAmount     Float
+  rate         Float
+  fee          Float    @default(0)
+  status       String   @default("COMPLETED")
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// SPOT TRADING ORDERS
+// ─────────────────────────────────────────────────────────────────────
+
+model SpotOrder {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pair         String                       // e.g., BTC/USDT
+  side         String
+  type         String      @default("MARKET")
+  price        Float?                       // limit price; null for market
+  amount       Float                        // base amount
+  filled       Float       @default(0)
+  total        Float       @default(0)      // quote total
+  fee          Float       @default(0)
+  status       String      @default("OPEN")
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  trades       Trade[]
+
+  @@index([userId])
+  @@index([pair, status])
+}
+
+
+
+// ─────────────────────────────────────────────────────────────────────
+// FUTURES ORDERS
+// ─────────────────────────────────────────────────────────────────────
+
+model FuturesOrder {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  market       String                       // futures/crypto, futures/stocks, futures/fx
+  pair         String
+  side         String
+  leverage     Int         @default(1)
+  type         String      @default("MARKET")
+  entryPrice   Float?
+  amount       Float
+  margin       Float       @default(0)
+  pnl          Float       @default(0)
+  status       String      @default("OPEN")
+  closedAt     DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// TRADES (executed fills) -- linked to a SpotOrder
+// ─────────────────────────────────────────────────────────────────────
+
+model Trade {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId   String
+  order     SpotOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  pair      String
+  side      String
+  price     Float
+  amount    Float
+  total     Float
+  fee       Float     @default(0)
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([orderId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// BUY NOW (instant fiat → crypto purchase)
+// ─────────────────────────────────────────────────────────────────────
+
+model BuyOrder {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currencySymbol String                  // crypto bought
+  fiatSymbol  String                     // USD, EUR, etc.
+  fiatAmount  Float
+  cryptoAmount Float
+  rate        Float
+  fee         Float    @default(0)
+  paymentMethod String?                  // card, bank, etc.
+  status      String   @default("PENDING")
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// ICO PROJECTS  (admin-managed)
+// ─────────────────────────────────────────────────────────────────────
+
+model IcoProject {
+  id            String   @id @default(cuid())
+  name          String
+  symbol        String
+  description   String?
+  iconUrl       String?
+  bannerUrl     String?
+  totalSupply   Float
+  pricePerToken Float                       // in USDT
+  minBuy        Float    @default(0)
+  maxBuy        Float    @default(0)
+  startAt       DateTime
+  endAt         DateTime
+  status        String    @default("UPCOMING")
+  soldAmount    Float    @default(0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  subscriptions IcoSubscription[]
+}
+
+
+
+model IcoSubscription {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId String
+  project   IcoProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  amountPaid Float                         // USDT paid
+  tokens     Float                         // tokens received
+  status     String    @default("COMPLETED")
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([projectId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// EARN PRODUCTS (staking / yield)
+// ─────────────────────────────────────────────────────────────────────
+
+model EarnProduct {
+  id            String   @id @default(cuid())
+  name          String
+  currencySymbol String                     // which coin to stake
+  apr           Float                       // annual percentage rate, e.g., 8.5
+  durationDays  Int                         // 0 = flexible
+  minAmount     Float    @default(0)
+  maxAmount     Float    @default(0)
+  totalCap      Float    @default(0)        // 0 = unlimited
+  filled        Float    @default(0)
+  description   String?
+  iconUrl       String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  subscriptions EarnSubscription[]
+}
+
+model EarnSubscription {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId   String
+  product     EarnProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  amount      Float
+  earnedSoFar Float       @default(0)
+  startAt     DateTime    @default(now())
+  endAt       DateTime?
+  status      String      @default("ACTIVE")
+  createdAt   DateTime    @default(now())
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// FINANCE PRODUCTS (loans, savings, structured products)
+// ─────────────────────────────────────────────────────────────────────
+
+model FinanceProduct {
+  id           String   @id @default(cuid())
+  name         String
+  type         String                       // SAVINGS | LOAN | STRUCTURED
+  currencySymbol String
+  rate         Float                        // interest / APR
+  durationDays Int
+  minAmount    Float    @default(0)
+  maxAmount    Float    @default(0)
+  description  String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  subscriptions FinanceSubscription[]
+}
+
+model FinanceSubscription {
+  id        String         @id @default(cuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   FinanceProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  amount    Float
+  startAt   DateTime       @default(now())
+  endAt     DateTime?
+  status    String         @default("ACTIVE")
+  createdAt DateTime       @default(now())
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// LOTTERY
+// ─────────────────────────────────────────────────────────────────────
+
+model LotteryRound {
+  id         String   @id @default(cuid())
+  name       String
+  ticketPrice Float
+  prizePool  Float    @default(0)
+  drawAt     DateTime
+  status     String        @default("OPEN")
+  winnerEntryId String?
+  createdAt  DateTime @default(now())
+  entries    LotteryEntry[]
+}
+
+
+
+model LotteryEntry {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roundId   String
+  round     LotteryRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  numbers   String                                    // e.g. "5,12,23,34,45"
+  amountPaid Float
+  isWinner  Boolean      @default(false)
+  prize     Float        @default(0)
+  createdAt DateTime     @default(now())
+
+  @@index([userId])
+  @@index([roundId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// REWARDS  (referral bonuses, sign-up bonuses, daily check-ins, etc.)
+// ─────────────────────────────────────────────────────────────────────
+
+model Reward {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         String                       // REFERRAL | SIGNUP | TASK | LOTTERY | PROMO
+  amount       Float
+  currencySymbol String  @default("USDT")
+  description  String?
+  status       String   @default("CREDITED") // CREDITED | PENDING | CANCELLED
+  refUserId    String?                       // for referral rewards: the invitee
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// NOTIFICATIONS  (per-user) and ANNOUNCEMENTS (broadcast)
+// ─────────────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  type      String   @default("INFO")        // INFO | SUCCESS | WARNING | DANGER
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  category  String   @default("GENERAL")    // GENERAL | NEWS | UPDATE | MAINTENANCE
+  bannerUrl String?
+  isPinned  Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  publishAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// SUPPORT TICKETS / CHAT
+// ─────────────────────────────────────────────────────────────────────
+
+model SupportTicket {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject   String
+  status    String   @default("OPEN")      // OPEN | PENDING | RESOLVED | CLOSED
+  priority  String   @default("NORMAL")    // LOW | NORMAL | HIGH | URGENT
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  messages  TicketMessage[]
+}
+
+model TicketMessage {
+  id        String   @id @default(cuid())
+  ticketId  String
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderId  String                          // user.id or admin.id
+  senderRole String                         // USER | ADMIN
+  body      String
+  createdAt DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// ADMIN USERS (separate from regular users)
+// ─────────────────────────────────────────────────────────────────────
+
+model Admin {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  email        String   @unique
+  passwordHash String
+  fullName     String?
+  role         String    @default("MODERATOR")
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  lastLoginIp  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  auditLogs    AdminAuditLog[]
+}
+
+
+
+model AdminAuditLog {
+  id        String   @id @default(cuid())
+  adminId   String
+  admin     Admin    @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  action    String                       // e.g., "USER_BAN", "KYC_APPROVE"
+  target    String?                      // e.g., user id, deposit id
+  details   String?                      // JSON string with diff
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// SITE SETTINGS  (key/value store, edited from admin panel)
+// ─────────────────────────────────────────────────────────────────────
+
+model Setting {
+  key       String   @id
+  value     String                         // JSON string for complex values
+  updatedAt DateTime @updatedAt
+}

@@ -1,100 +1,248 @@
-import { motion } from "framer-motion";
-import { Clock, TrendingUp, Shield } from "lucide-react";
-
-const icoProjects = [
-  { name: "Enivex Token", symbol: "ENX", price: "0.25", raised: "2,450,000", target: "5,000,000", progress: 49, endDate: "2026-06-30", status: "Active" },
-  { name: "DeFi Protocol", symbol: "DFP", price: "0.10", raised: "1,200,000", target: "3,000,000", progress: 40, endDate: "2026-05-15", status: "Active" },
-  { name: "MetaVerse Land", symbol: "MVL", price: "0.50", raised: "4,800,000", target: "10,000,000", progress: 48, endDate: "2026-07-20", status: "Upcoming" },
-];
+import { useState } from "react";
 
 const ICO = () => {
+  const [activeTab, setActiveTab] = useState<"preview" | "subscribe" | "allocation">("preview");
+
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-12">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-12"
-        >
-          <h1 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">Initial Coin Offering</h1>
-          <p className="text-muted-foreground max-w-xl mx-auto">Get early access to promising blockchain projects at the best prices</p>
-        </motion.div>
-
-        {/* Stats */}
-        <div className="grid sm:grid-cols-3 gap-4 mb-12">
-          {[
-            { icon: TrendingUp, label: "Total Raised", value: "$8.45M" },
-            { icon: Clock, label: "Active Projects", value: "3" },
-            { icon: Shield, label: "Avg. ROI", value: "245%" },
-          ].map((stat) => (
-            <div key={stat.label} className="bg-card border border-border rounded-xl p-6 text-center">
-              <stat.icon className="w-8 h-8 text-primary mx-auto mb-3" />
-              <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-              <p className="text-sm text-muted-foreground">{stat.label}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Projects */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {icoProjects.map((project, i) => (
-            <motion.div
-              key={project.symbol}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
-              className="bg-card border border-border rounded-xl p-6"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-sm font-bold text-primary">
-                    {project.symbol.charAt(0)}
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-foreground">{project.name}</h3>
-                    <p className="text-xs text-muted-foreground">{project.symbol}</p>
-                  </div>
-                </div>
-                <span className={`text-xs px-2 py-1 rounded-full ${project.status === "Active" ? "bg-green-400/10 text-green-400" : "bg-yellow-400/10 text-yellow-400"}`}>
-                  {project.status}
-                </span>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Price</span>
-                  <span className="text-foreground font-medium">${project.price}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Raised</span>
-                  <span className="text-foreground font-medium">${project.raised}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Target</span>
-                  <span className="text-foreground font-medium">${project.target}</span>
-                </div>
-                <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-muted-foreground">Progress</span>
-                    <span className="text-primary">{project.progress}%</span>
-                  </div>
-                  <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
-                    <div className="h-full bg-primary rounded-full" style={{ width: `${project.progress}%` }} />
-                  </div>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">End Date</span>
-                  <span className="text-foreground">{project.endDate}</span>
-                </div>
-              </div>
-
-              <button className="w-full mt-4 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition-opacity text-sm">
-                Participate
+    <div className="min-h-screen bg-white">
+      {/* Hero Section */}
+      <section className="relative overflow-visible" style={{ background: "#000000", paddingTop: "80px", paddingBottom: "120px" }}>
+        <div className="max-w-[1440px] mx-auto px-6 py-18">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center justify-between">
+            {/* Left Content */}
+            <div className="space-y-6 lg:col-span-7">
+              <h1 className="text-4xl lg:text-[2.625rem] font-bold text-white mb-4">
+                Gathering the World's Best Assets
+              </h1>
+              <h2 className="text-5xl font-bold mb-6" style={{ color: "#adff00" }}>
+                ICO
+              </h2>
+              <p className="max-w-[700px] text-2xl font-semibold text-white/70 leading-none mb-8">
+                ICO is a high-quality blockchain new project selection platform designed to help users become early investors in emerging digital currencies. You can easily participate by holding the required currency.
+              </p>
+              <button
+                className="px-8 py-3 rounded-full text-base font-semibold transition-all duration-300"
+                style={{
+                  background: "#ffffff",
+                  color: "#000000",
+                }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLElement).style.background = "#adff00";
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLElement).style.background = "#ffffff";
+                }}
+              >
+                View my positions
               </button>
-            </motion.div>
-          ))}
+            </div>
+
+            {/* Right Image */}
+            <div className="flex justify-center lg:justify-end lg:col-span-5">
+              <img
+                src="/ico/hero-image.png"
+                alt="ICO"
+                className="w-full max-w-md lg:max-w-lg"
+                draggable={false}
+              />
+            </div>
+          </div>
         </div>
-      </div>
+
+        {/* Card Section - Overlapping hero by 18% */}
+        <div className="absolute bottom-0 left-0 right-0" style={{ transform: "translateY(82%)" }}>
+          <div className="max-w-[1440px]  mx-auto px-6">
+
+            {/* Flex container replaces Grid */}
+            <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+
+              {/* Card 1 - Added max-width to shrink it */}
+              <div className="w-full max-w-[420px] h-[200px]">
+                <img src="/ico/card-1.png" alt="Proterozoic ICO" className="w-full h-full object-fill rounded-xl"  />
+              </div>
+
+              {/* Card 2 - Added max-width to shrink it */}
+              <div className="w-full max-w-[420px] h-[200px]">
+                <img src="/ico/card-2.png" alt="NFT ICO" className="w-full h-full object-fill rounded-xl" />
+              </div>
+
+              {/* Card 3 - Added max-width to shrink it */}
+              <div className="w-full max-w-[420px] h-[200px]">
+                <img src="/ico/card-3.png" alt="Web 3.0" className="w-full h-full object-fill rounded-xl" />
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      {/* Tab Section */}
+      <section className="py-12 bg-white" style={{ marginTop: "160px" }}>
+        <div className="max-w-[1440px] mx-auto px-6">
+          {/* Tab Navigation */}
+          <div className="flex gap-8 border-b-2 border-gray-200 mb-8">
+            <button
+              onClick={() => setActiveTab("preview")}
+              className={`pb-3 px-4 text-xl font-semibold transition-colors relative ${activeTab === "preview" ? "text-black" : "text-gray-400"
+                }`}
+            >
+              Preview
+              {activeTab === "preview" && (
+                <div
+                  className="absolute bottom-0 left-0 right-0 h-0.5"
+                  style={{ background: "#000000" }}
+                />
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("subscribe")}
+              className={`pb-3 px-4 text-xl font-semibold transition-colors relative ${activeTab === "subscribe" ? "text-black" : "text-gray-400"
+                }`}
+            >
+              Subscribe
+              {activeTab === "subscribe" && (
+                <div
+                  className="absolute bottom-0 left-0 right-0 h-0.5"
+                  style={{ background: "#000000" }}
+                />
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("allocation")}
+              className={`pb-3 px-4 text-xl font-semibold transition-colors relative ${activeTab === "allocation" ? "text-black" : "text-gray-400"
+                }`}
+            >
+              Allocation
+              {activeTab === "allocation" && (
+                <div
+                  className="absolute bottom-0 left-0 right-0 h-0.5"
+                  style={{ background: "#000000" }}
+                />
+              )}
+            </button>
+            <div className="ml-auto">
+              <button className="px-6 py-2.5 rounded text-base font-medium text-white" style={{ background: "#000000" }}>
+                Order
+              </button>
+            </div>
+          </div>
+
+          {/* Table - Only show for Preview tab */}
+          {activeTab === "preview" && (
+            <div className="bg-white rounded-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr style={{ background: "#f9f9f9" }}>
+                      <th className="px-4 py-4 text-left text-base font-medium text-gray-600">Name</th>
+                      <th className="px-4 py-4 text-left text-base font-medium text-gray-600">Subscription Price</th>
+                      <th className="px-4 py-4 text-left text-base font-medium text-gray-600">Subscription Deadline</th>
+                      <th className="px-4 py-4 text-left text-base font-medium text-gray-600">Issue Price</th>
+                      <th className="px-4 py-4 text-left text-base font-medium text-gray-600">ICO Start Date</th>
+                      <th className="px-4 py-4 text-left text-base font-medium text-gray-600">Expected Return</th>
+                      <th className="px-4 py-4 text-left text-base font-medium text-gray-600">Actual Return</th>
+                      <th className="px-4 py-4 text-left text-base font-medium text-gray-600">Listing Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td colSpan={8} className="py-24">
+                        <div className="flex flex-col items-center justify-center text-center">
+                          <img
+                            src="/ico/no-data.png"
+                            alt="No Data"
+                            className="w-32 h-32 mb-4 opacity-30"
+                          />
+                          <p className="text-gray-400 text-lg">No Data</p>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* No Data - Show for Subscribe and Allocation tabs */}
+          {(activeTab === "subscribe" || activeTab === "allocation") && (
+            <div className="bg-white rounded-lg py-32">
+              <div className="flex flex-col items-center justify-center text-center">
+                <img
+                  src="/ico/no-data.png"
+                  alt="No Data"
+                  className="w-32 h-32 mb-4 opacity-30"
+                />
+                <p className="text-gray-400 text-lg">No Data</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* How to trade ICO */}
+      <section className="py-20 bg-white">
+        <div className="max-w-[1440px] mx-auto px-6">
+          <h2 className="text-4xl font-bold text-black mb-16">How to trade ICO</h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 relative">
+            {/* Connecting lines - dashed and behind icons */}
+            <div className="hidden lg:block absolute top-12 left-0 right-0" style={{ height: "2px", zIndex: 0 }}>
+              <div className="flex items-center h-full">
+                <div className="flex-1"></div>
+                <div className="flex-1 border-t-2 border-dashed border-gray-300"></div>
+                <div className="flex-1 border-t-2 border-dashed border-gray-300"></div>
+                <div className="flex-1 border-t-2 border-dashed border-gray-300"></div>
+                <div className="flex-1"></div>
+              </div>
+            </div>
+
+            {/* Step 1 */}
+            <div className="flex flex-col items-center text-center relative z-10">
+              <div className="mb-6 bg-white">
+                <img src="/ico/maker-step1.svg" alt="Planning" className="w-24 h-24" />
+              </div>
+              <h3 className="text-xl font-bold text-black mb-3">Planning and Preparation:</h3>
+              <p className="text-base text-gray-600 leading-relaxed">
+                Determine your project and business model and develop a detailed ICO plan.
+              </p>
+            </div>
+
+            {/* Step 2 */}
+            <div className="flex flex-col items-center text-center relative z-10">
+              <div className="mb-6 bg-white">
+                <img src="/ico/maker-step2.svg" alt="Development" className="w-24 h-24" />
+              </div>
+              <h3 className="text-xl font-bold text-black mb-3">Development token:</h3>
+              <p className="text-base text-gray-600 leading-relaxed">
+                Create and develop your token.
+              </p>
+            </div>
+
+            {/* Step 3 */}
+            <div className="flex flex-col items-center text-center relative z-10">
+              <div className="mb-6 bg-white">
+                <img src="/ico/maker-step3.svg" alt="KYC" className="w-24 h-24" />
+              </div>
+              <h3 className="text-xl font-bold text-black mb-3">KYC verification:</h3>
+              <p className="text-base text-gray-600 leading-relaxed">
+                In accordance with local regulatory requirements, "Know Your Customer" (KYC) and "Anti-Money Laundering" (AML) verification procedures are performed to ensure that investors participating in ICO meet compliance standards.
+              </p>
+            </div>
+
+            {/* Step 4 */}
+            <div className="flex flex-col items-center text-center relative z-10">
+              <div className="mb-6 bg-white">
+                <img src="/ico/maker-step4.svg" alt="Offering" className="w-24 h-24" />
+              </div>
+              <h3 className="text-xl font-bold text-black mb-3">Offering ICO:</h3>
+              <p className="text-base text-gray-600 leading-relaxed">
+                Offer ICO according to a predetermined schedule and accept funds from investors.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 };

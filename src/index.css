@@ -58,6 +58,13 @@
   }
 }
 
+/* ── Prevent horizontal layout-viewport overflow that breaks position:fixed ── */
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
@@ -70,14 +77,19 @@
   border-radius: 3px;
 }
 
+/* -- Enivex orbit-ring spin (MobileHome hero) -- */
+@keyframes orbit-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Brand ticker animation */
 @keyframes ticker-scroll {
-  0% { transform: translateX(0); }
+  0%   { transform: translateX(0); }
   100% { transform: translateX(-50%); }
 }
 
 .ticker-animate {
-  animation: ticker-scroll 30s linear infinite;
+  animation: ticker-scroll 42s linear infinite;
 }
 
 /* Floating animation for coins */

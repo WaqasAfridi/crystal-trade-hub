@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+               "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  background: #0a0b0f;
+  color: #e5e7eb;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbar */
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: #262a36; border-radius: 4px; }
+*::-webkit-scrollbar-thumb:hover { background: #353a4a; }
+
+input, select, textarea, button { font: inherit; color: inherit; }
