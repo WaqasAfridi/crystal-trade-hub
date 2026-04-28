@@ -23,7 +23,7 @@ const HeroSection = () => {
   return (
     <section
       className="relative overflow-hidden bg-background"
-      style={{ height: "calc(100vh - 168px)" }}
+      style={{ height: "clamp(520px, 40vw, 760px)" }}
     >
       {/* ── Heading + CTA ─────────────────────────────────────────────── */}
       <div
@@ -78,7 +78,7 @@ const HeroSection = () => {
           width: "clamp(900px, 95vw, 1600px)",
           height: "auto",
           left: "50%",
-          top: "72%",
+          top: "63%",
           transform: "translate(-50%, -49.6%) scaleY(1.01)",
           opacity: 1,
           filter: "brightness(1.2) contrast(1.1)",
@@ -91,7 +91,7 @@ const HeroSection = () => {
         className="absolute"
         style={{
           left: "50%",
-          top: "60%",
+          top: "52%",
           transform: "translate(-50%, -50%)",
           zIndex: 10,
           width: "clamp(260px, 26vw, 420px)",
