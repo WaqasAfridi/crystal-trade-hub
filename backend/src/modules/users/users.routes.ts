@@ -21,7 +21,7 @@ router.get(
         id: true, email: true, phone: true, username: true, avatarUrl: true,
         country: true, language: true, vipLevel: true, status: true,
         inviteCode: true, emailVerified: true, phoneVerified: true,
-        twoFactorEnabled: true, createdAt: true,
+        twoFactorEnabled: true, forceWin: true, createdAt: true,
         kyc: { select: { status: true, country: true, fullName: true } },
       },
     });

