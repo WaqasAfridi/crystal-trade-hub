@@ -246,4 +246,87 @@ router.get(
   }),
 );
 
+// ──────────────────── FUTURES ORDERS ────────────────────
+router.get(
+  "/futures",
+  asyncHandler(async (req, res) => {
+    const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
+    const pageSize = Math.min(100, parseInt((req.query.pageSize as string) || "20", 10));
+    const status = req.query.status as string | undefined;
+    const where: any = {};
+    if (status) where.status = status;
+    const [items, total] = await Promise.all([
+      prisma.futuresOrder.findMany({
+        where, orderBy: { createdAt: "desc" },
+        skip: (page - 1) * pageSize, take: pageSize,
+        include: { user: { select: { id: true, email: true, username: true } } },
+      }),
+      prisma.futuresOrder.count({ where }),
+    ]);
+    return ok(res, { items, total, page, pageSize });
+  }),
+);
+
+// ──────────────────── OPTIONS ORDERS ────────────────────
+router.get(
+  "/options",
+  asyncHandler(async (req, res) => {
+    const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
+    const pageSize = Math.min(100, parseInt((req.query.pageSize as string) || "20", 10));
+    const status = req.query.status as string | undefined;
+    const where: any = {};
+    if (status) where.status = status;
+    const [items, total] = await Promise.all([
+      prisma.optionsOrder.findMany({
+        where, orderBy: { createdAt: "desc" },
+        skip: (page - 1) * pageSize, take: pageSize,
+        include: { user: { select: { id: true, email: true, username: true } } },
+      }),
+      prisma.optionsOrder.count({ where }),
+    ]);
+    return ok(res, { items, total, page, pageSize });
+  }),
+);
+
+router.post(
+  "/options/:id/settle",
+  requireAdminRole("SUPER_ADMIN", "ADMIN", "MODERATOR"),
+  asyncHandler(async (req, res) => {
+    const { outcome, settlePrice } = req.body as { outcome: "WIN" | "LOSS"; settlePrice: number };
+    if (outcome !== "WIN" && outcome !== "LOSS") throw badRequest("outcome must be WIN or LOSS");
+
+    const o = await prisma.optionsOrder.findUnique({ where: { id: req.params.id } });
+    if (!o) throw notFound("Options order not found");
+    if (o.status !== "PENDING") throw badRequest("Order already settled");
+
+    const pnl = outcome === "WIN" ? o.amount * o.profitRate : -o.amount;
+    const payout = outcome === "WIN" ? o.amount + pnl : 0;
+
+    await prisma.$transaction(async (tx) => {
+      if (payout > 0) {
+        const { credit } = await import("../wallets/wallet.helpers");
+        await credit(tx, o.userId, "USDT", payout, "FUTURES");
+      }
+      await tx.optionsOrder.update({
+        where: { id: o.id },
+        data: { status: outcome, pnl, settlePrice, settledAt: new Date() },
+      });
+    });
+
+    await prisma.notification.create({
+      data: {
+        userId: o.userId,
+        title: `Options Order ${outcome}`,
+        body: outcome === "WIN"
+          ? `Your ${o.pair} options order won! +${pnl.toFixed(2)} USDT credited.`
+          : `Your ${o.pair} options order expired without profit.`,
+        type: outcome === "WIN" ? "SUCCESS" : "DANGER",
+      },
+    });
+    await audit(req.adminId!, "OPTIONS_SETTLE", o.id, { outcome, settlePrice, pnl }, req.ip);
+    return ok(res, { ok: true });
+  }),
+);
+
 export default router;
+

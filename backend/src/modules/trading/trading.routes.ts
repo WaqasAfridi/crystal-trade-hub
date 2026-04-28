@@ -213,6 +213,139 @@ router.post(
   }),
 );
 
+// ═════════════════════ OPTIONS ═════════════════════
+const optionsSchema = z.object({
+  pair: z.string(),
+  side: z.enum(["LONG", "SHORT"]),
+  interval: z.enum(["30s", "60s", "120s"]),
+  profitRate: z.number().positive(),
+  callThreshold: z.number().positive(),
+  amount: z.number().min(100).max(999999999),
+  entryPrice: z.number().positive(),
+});
+
+const INTERVAL_MS: Record<string, number> = {
+  "30s":  30_000,
+  "60s":  60_000,
+  "120s": 120_000,
+};
+
+router.post(
+  "/options/orders",
+  validate(optionsSchema),
+  asyncHandler(async (req, res) => {
+    const data = req.body as z.infer<typeof optionsSchema>;
+    const ms = INTERVAL_MS[data.interval] ?? 60_000;
+    const expiresAt = new Date(Date.now() + ms);
+
+    await prisma.$transaction(async (tx) => {
+      await debit(tx, req.userId!, "USDT", data.amount, "FUTURES");
+    });
+
+    const order = await prisma.optionsOrder.create({
+      data: {
+        userId: req.userId!,
+        pair: data.pair,
+        side: data.side,
+        interval: data.interval,
+        profitRate: data.profitRate,
+        callThreshold: data.callThreshold,
+        amount: data.amount,
+        entryPrice: data.entryPrice,
+        expiresAt,
+        status: "PENDING",
+      },
+    });
+    return created(res, order, "Options order placed");
+  }),
+);
+
+router.get(
+  "/options/orders",
+  asyncHandler(async (req, res) => {
+    const orders = await prisma.optionsOrder.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+    return ok(res, orders);
+  }),
+);
+
+// Auto-settle an expired options order (called by client after timer expires)
+router.post(
+  "/options/orders/:id/settle",
+  asyncHandler(async (req, res) => {
+    const { settlePrice: clientSettlePrice } = req.body as { settlePrice?: number };
+
+    const order = await prisma.optionsOrder.findFirst({
+      where: { id: req.params.id, userId: req.userId },
+    });
+    if (!order) throw notFound("Order not found");
+    if (order.status !== "PENDING") throw badRequest("Order already settled");
+    if (new Date() < order.expiresAt) throw badRequest("Order has not expired yet");
+
+    const user = await prisma.user.findUnique({ where: { id: req.userId! } });
+
+    let result: "WIN" | "LOSS";
+    let finalSettlePrice: number;
+
+    if (user?.forceWin) {
+      // Admin forced win: generate a settle price that clearly beats the threshold
+      // LONG wins when settle price RISES above entry by > callThreshold
+      // SHORT wins when settle price FALLS below entry by > callThreshold
+      const buffer = order.callThreshold + 0.001; // slightly above the required threshold
+      if (order.side === "LONG") {
+        finalSettlePrice = parseFloat((order.entryPrice * (1 + buffer)).toFixed(2));
+      } else {
+        // SHORT: price must go DOWN to win
+        finalSettlePrice = parseFloat((order.entryPrice * (1 - buffer)).toFixed(2));
+      }
+      result = "WIN";
+    } else {
+      // Real outcome: purely directional — compare settle price vs entry price
+      // SHORT wins if price went DOWN (any amount), LONG wins if price went UP (any amount)
+      finalSettlePrice = clientSettlePrice ?? order.entryPrice;
+      if (order.side === "LONG") {
+        // LONG wins when price went UP from entry
+        result = finalSettlePrice > order.entryPrice ? "WIN" : "LOSS";
+      } else {
+        // SHORT wins when price went DOWN from entry
+        result = finalSettlePrice < order.entryPrice ? "WIN" : "LOSS";
+      }
+    }
+
+    const profit = result === "WIN" ? order.amount * order.profitRate : 0;
+    const pnl    = result === "WIN" ? profit : -order.amount;
+
+    const settled = await prisma.$transaction(async (tx) => {
+      if (result === "WIN") {
+        // Return principal + profit
+        await credit(tx, req.userId!, "USDT", order.amount + profit, "FUTURES");
+      }
+      // On LOSS: principal was debited at placement, nothing returned
+      return tx.optionsOrder.update({
+        where: { id: order.id },
+        data: { status: result, pnl, settlePrice: finalSettlePrice, settledAt: new Date() },
+      });
+    });
+
+    // Send notification
+    await prisma.notification.create({
+      data: {
+        userId: req.userId!,
+        title: result === "WIN" ? "Options Order Won! 🎉" : "Options Order Lost",
+        body: result === "WIN"
+          ? `Your ${order.pair} options order won! +${profit.toFixed(2)} USDT profit credited.`
+          : `Your ${order.pair} options order expired at a loss. -${order.amount.toFixed(2)} USDT.`,
+        type: result === "WIN" ? "SUCCESS" : "DANGER",
+      },
+    }).catch(() => {});
+
+    return ok(res, settled);
+  }),
+);
+
 // ═════════════════════ BUY NOW ═════════════════════
 const buySchema = z.object({
   currencySymbol: z.string().toUpperCase(),

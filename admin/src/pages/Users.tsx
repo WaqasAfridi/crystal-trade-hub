@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Search } from "lucide-react";
 import { api } from "../lib/api";
@@ -12,6 +12,8 @@ export default function Users() {
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [status, setStatus] = useState("");
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ["users", page, search, status],
@@ -24,6 +26,18 @@ export default function Users() {
   });
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+
+  const handleForceWinToggle = async (userId: string) => {
+    setTogglingId(userId);
+    try {
+      await api.patch(`/admin/users/${userId}/force-win`);
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+    } catch {
+      alert("Failed to toggle Force Win");
+    } finally {
+      setTogglingId(null);
+    }
+  };
 
   return (
     <div className="p-8">
@@ -70,6 +84,7 @@ export default function Users() {
                 <Th>Contact</Th>
                 <Th>VIP</Th>
                 <Th>Status</Th>
+                <Th>Force Win</Th>
                 <Th>Country</Th>
                 <Th>Verified</Th>
                 <Th>Last login</Th>
@@ -90,6 +105,27 @@ export default function Users() {
                   </Td>
                   <Td>{u.vipLevel}</Td>
                   <Td><Badge tone={statusTone(u.status)}>{u.status}</Badge></Td>
+                  <Td>
+                    {/* Force Win toggle */}
+                    <button
+                      onClick={() => handleForceWinToggle(u.id)}
+                      disabled={togglingId === u.id}
+                      title={u.forceWin ? "Force Win ON — click to disable" : "Force Win OFF — click to enable"}
+                      style={{
+                        width: 44, height: 24, borderRadius: 12, cursor: togglingId === u.id ? "wait" : "pointer",
+                        position: "relative", border: "none", outline: "none",
+                        background: u.forceWin ? "#25a750" : "#374151",
+                        transition: "background 0.2s", opacity: togglingId === u.id ? 0.6 : 1,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <div style={{
+                        position: "absolute", top: 3, width: 18, height: 18, borderRadius: "50%",
+                        background: "#fff", transition: "left 0.2s",
+                        left: u.forceWin ? 23 : 3,
+                      }} />
+                    </button>
+                  </Td>
                   <Td className="text-muted text-xs">{u.country || "—"}</Td>
                   <Td>
                     <div className="flex gap-1">

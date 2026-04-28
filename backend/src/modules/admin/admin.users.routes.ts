@@ -43,6 +43,7 @@ router.get(
           status: true, vipLevel: true, country: true,
           inviteCode: true, invitedById: true,
           emailVerified: true, phoneVerified: true,
+          forceWin: true,
           createdAt: true, lastLoginAt: true, lastLoginIp: true,
         },
       }),
@@ -165,6 +166,23 @@ router.delete(
     await prisma.user.delete({ where: { id: req.params.id } });
     await audit(req.adminId!, "USER_DELETE", req.params.id, undefined, req.ip);
     return ok(res, { ok: true });
+  }),
+);
+
+// ── Toggle forceWin (always WIN on options) ────────────────────────────────
+router.patch(
+  "/:id/force-win",
+  requireAdminRole("SUPER_ADMIN", "ADMIN"),
+  asyncHandler(async (req, res) => {
+    const user = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true, forceWin: true } });
+    if (!user) throw notFound("User not found");
+    const updated = await prisma.user.update({
+      where: { id: req.params.id },
+      data: { forceWin: !user.forceWin },
+      select: { id: true, forceWin: true },
+    });
+    await audit(req.adminId!, updated.forceWin ? "USER_FORCE_WIN_ON" : "USER_FORCE_WIN_OFF", req.params.id, undefined, req.ip);
+    return ok(res, updated);
   }),
 );
 

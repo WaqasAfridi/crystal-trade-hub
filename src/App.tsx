@@ -30,6 +30,7 @@ import EarnGold from "./pages/EarnGold";
 import Finance from "./pages/Finance";
 import BuyNow from "./pages/BuyNow";
 import SpotTrading from "./pages/SpotTrading";
+import FuturesTrading from "./pages/FuturesTrading";
 import AssetsManagement from "./pages/AssetsManagement";
 import Recharge from "./pages/Recharge";
 import Withdraw from "./pages/Withdraw";
@@ -118,10 +119,10 @@ const AppRoutes = () => {
           <Route path="/earn" element={<EarnGold />} />
           <Route path="/lottery" element={<LotteryRecords />} />
 
-          {/* Futures — page loads but buy/sell buttons require login (handled inside SpotTrading) */}
-          <Route path="/futures/crypto" element={<SpotTrading />} />
-          <Route path="/futures/stocks" element={<SpotTrading />} />
-          <Route path="/futures/fx"     element={<SpotTrading />} />
+          {/* Futures — dedicated FuturesTrading page with Perpetual + Options tabs */}
+          <Route path="/futures/crypto" element={<FuturesTrading />} />
+          <Route path="/futures/stocks" element={<FuturesTrading />} />
+          <Route path="/futures/fx"     element={<FuturesTrading />} />
 
           {/* Protected — Spot, Finance, ICO */}
           <Route
@@ -156,6 +157,9 @@ const AppRoutes = () => {
           <Route path="/assets/convert"           element={<ProtectedRoute><ConvertPage /></ProtectedRoute>} />
           <Route path="/assets/transfer"          element={<ProtectedRoute><TransferPage /></ProtectedRoute>} />
           <Route path="/assets/overview"          element={<ProtectedRoute><OverviewPage /></ProtectedRoute>} />
+          <Route path="/assets/spot"               element={<ProtectedRoute><OverviewPage /></ProtectedRoute>} />
+          <Route path="/assets/trading"             element={<ProtectedRoute><OverviewPage /></ProtectedRoute>} />
+          <Route path="/assets/finance"             element={<ProtectedRoute><OverviewPage /></ProtectedRoute>} />
           <Route path="/assets/funding-records"   element={<ProtectedRoute>{isMobile ? <MobileHistory /> : <OverviewPage />}</ProtectedRoute>} />
           <Route path="/assets/history"           element={<ProtectedRoute>{isMobile ? <MobileHistory /> : <OverviewPage />}</ProtectedRoute>} />
           <Route path="/assets/financial-records" element={<ProtectedRoute><OverviewPage /></ProtectedRoute>} />

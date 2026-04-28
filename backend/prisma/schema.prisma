@@ -42,6 +42,7 @@ model User {
   language           String?   @default("en")
   lastLoginAt        DateTime?
   lastLoginIp        String?
+  forceWin           Boolean   @default(false)   // admin-controlled: always WIN on options
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -53,6 +54,7 @@ model User {
   conversions        Conversion[]
   spotOrders         SpotOrder[]
   futuresOrders      FuturesOrder[]
+  optionsOrders      OptionsOrder[]
   trades             Trade[]
   icoSubscriptions   IcoSubscription[]
   earnSubscriptions  EarnSubscription[]
@@ -316,6 +318,32 @@ model FuturesOrder {
   closedAt     DateTime?
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// OPTIONS ORDERS
+// ─────────────────────────────────────────────────────────────────────
+
+model OptionsOrder {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pair           String
+  side           String                       // LONG | SHORT
+  interval       String                       // 30s, 1m, 2m, 5m
+  profitRate     Float                        // e.g. 0.20
+  callThreshold  Float                        // e.g. 0.0095
+  amount         Float
+  entryPrice     Float
+  settlePrice    Float?
+  status         String    @default("PENDING") // PENDING | WIN | LOSS | CANCELLED
+  pnl            Float     @default(0)
+  expiresAt      DateTime
+  settledAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([userId])
 }

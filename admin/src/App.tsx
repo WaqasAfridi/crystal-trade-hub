@@ -24,6 +24,7 @@ import TicketDetail from "./pages/TicketDetail";
 import Settings from "./pages/Settings";
 import Admins from "./pages/Admins";
 import AuditLog from "./pages/AuditLog";
+import FuturesOrders from "./pages/FuturesOrders";
 
 const RequireAuth = ({ children }: { children: JSX.Element }) => {
   const { token } = useAuth();
@@ -57,6 +58,7 @@ export default function App() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/admins" element={<Admins />} />
         <Route path="/audit-log" element={<AuditLog />} />
+        <Route path="/futures-orders" element={<FuturesOrders />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
