@@ -35,6 +35,7 @@ export interface RegisterPayload {
   phone?: string;
   username?: string;
   password: string;
+  verificationCode?: string;   // required for email / phone tabs
   inviteCode?: string;
 }
 

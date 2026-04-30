@@ -69,6 +69,20 @@ model User {
 
 
 
+// One-time password codes (email / phone verification during registration, password reset, 2FA)
+model VerificationCode {
+  id        String   @id @default(cuid())
+  target    String                         // email address or E.164 phone number
+  code      String                         // 6-digit OTP
+  type      String   @default("REGISTER")  // REGISTER | RESET_PASSWORD | LOGIN_2FA
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([target, type])
+  @@index([expiresAt])
+}
+
 model LoginHistory {
   id        String   @id @default(cuid())
   userId    String

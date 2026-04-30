@@ -14,19 +14,21 @@ const router = Router();
 
 // ── REGISTER ────────────────────────────────────────────────────────────────
 const registerSchema = z.object({
-  email: z.string().email().optional(),
-  phone: z.string().min(5).max(20).optional(),
-  username: z.string().min(3).max(30).optional(),
-  password: z.string().min(6).max(72),
-  inviteCode: z.string().trim().toUpperCase().optional(),
-}).refine((d) => d.email || d.phone, { message: "Email or phone is required" });
+  email:            z.string().email().optional(),
+  phone:            z.string().min(5).max(20).optional(),
+  username:         z.string().min(3).max(30).optional(),
+  password:         z.string().min(6).max(72),
+  verificationCode: z.string().length(6).optional(),   // required for email / phone
+  inviteCode:       z.string().trim().toUpperCase().optional(),
+}).refine((d) => d.email || d.phone || d.username, { message: "Email, phone, or username is required" });
 
 router.post(
   "/register",
   validate(registerSchema),
   asyncHandler(async (req, res) => {
-    const { email, phone, username, password, inviteCode } = req.body as z.infer<typeof registerSchema>;
+    const { email, phone, username, password, verificationCode, inviteCode } = req.body as z.infer<typeof registerSchema>;
 
+    // ── Uniqueness checks
     if (email) {
       const exists = await prisma.user.findUnique({ where: { email } });
       if (exists) throw conflict("Email already registered");
@@ -38,6 +40,27 @@ router.post(
     if (username) {
       const exists = await prisma.user.findUnique({ where: { username } });
       if (exists) throw conflict("Username already taken");
+    }
+
+    // ── Verify OTP for email / phone registrations
+    if (email || phone) {
+      const target = email ?? phone!;
+      if (!verificationCode) throw badRequest("Verification code is required for email/phone registration");
+
+      const vcRecord = await prisma.verificationCode.findFirst({
+        where: {
+          target,
+          code:      verificationCode,
+          type:      "REGISTER",
+          used:      false,
+          expiresAt: { gte: new Date() },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      if (!vcRecord) throw badRequest("Invalid or expired verification code");
+
+      // Consume the code
+      await prisma.verificationCode.update({ where: { id: vcRecord.id }, data: { used: true } });
     }
 
     let invitedById: string | undefined;
@@ -62,6 +85,8 @@ router.post(
         passwordHash,
         inviteCode: myCode,
         invitedById,
+        emailVerified: !!email,   // email OTP was verified above
+        phoneVerified: !!phone,   // phone OTP was verified above
       },
       select: {
         id: true, email: true, phone: true, username: true,
@@ -83,6 +108,61 @@ router.post(
 
     const token = signUserToken({ sub: user.id });
     return created(res, { user, token }, "Account created");
+  }),
+);
+
+// ── SEND VERIFICATION CODE ───────────────────────────────────────────────────
+const sendCodeSchema = z.object({
+  target: z.string().min(3),
+  type:   z.enum(["REGISTER", "RESET_PASSWORD"]).default("REGISTER"),
+});
+
+router.post(
+  "/send-code",
+  validate(sendCodeSchema),
+  asyncHandler(async (req, res) => {
+    const { target, type } = req.body as z.infer<typeof sendCodeSchema>;
+
+    // Rate limit: max 5 codes per target per hour
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const recentCount = await prisma.verificationCode.count({
+      where: { target, createdAt: { gte: oneHourAgo } },
+    });
+    if (recentCount >= 5) throw badRequest("Too many requests. Please wait before requesting another code.");
+
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target);
+
+    // For REGISTER: confirm the target is not already taken
+    if (type === "REGISTER") {
+      if (isEmail) {
+        const exists = await prisma.user.findUnique({ where: { email: target } });
+        if (exists) throw conflict("Email already registered");
+      } else {
+        const exists = await prisma.user.findUnique({ where: { phone: target } });
+        if (exists) throw conflict("Phone already registered");
+      }
+    }
+
+    // Invalidate any prior unused codes
+    await prisma.verificationCode.updateMany({
+      where: { target, type, used: false },
+      data: { used: true },
+    });
+
+    const code      = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    await prisma.verificationCode.create({ data: { target, code, type, expiresAt } });
+
+    // ── Send the code ──────────────────────────────────────────────────
+    // TODO: integrate SMTP (e.g. nodemailer + Brevo/SendGrid) for email
+    //       and a Twilio / Vonage SMS gateway for phone numbers.
+    //       The core logic is ready; just call your provider here.
+    console.log(`[OTP] ${type} code for ${target}: ${code}`);
+    // ────────────────────────────────────────────────────────────────
+
+    // In non-production envs, echo the code back so developers can test
+    const isDev = process.env.NODE_ENV !== "production";
+    return ok(res, { sent: true, ...(isDev ? { devCode: code } : {}) }, "Verification code sent");
   }),
 );
 
