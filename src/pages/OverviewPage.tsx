@@ -357,13 +357,20 @@ const OverviewPage = () => {
 
   /* ── Balance header card — matches screenshot exactly ── */
   // accountUsd: the balance to show for this specific account card (null = show total)
-  const BalanceCard = ({ accountUsd }: { accountUsd?: number }) => {
+  // convertAccount: the API accountType to pre-select on the Convert page (undefined = show selector)
+  const BalanceCard = ({ accountUsd, convertAccount, transferAccount }: { accountUsd?: number; convertAccount?: "SPOT" | "FUTURES" | "EARN"; transferAccount?: "SPOT" | "FUTURES" | "EARN" }) => {
     const displayUsdt = accountUsd ?? totalUsd;
+    const convertHref = convertAccount
+      ? `/assets/convert?account=${convertAccount}`
+      : "/assets/convert";
+    const transferHref = transferAccount
+      ? `/assets/transfer?from=${transferAccount}`
+      : "/assets/transfer";
     const buttons = [
       { label: "Deposit",  icon: Download, href: "/recharge"  },
       { label: "Withdraw", icon: Upload,   href: "/withdraw"  },
-      { label: "Convert",  icon: RefreshCw,href: "/conversion"},
-      { label: "Transfer", icon: Send,     href: "/transfer"  },
+      { label: "Convert",  icon: RefreshCw, href: convertHref },
+      { label: "Transfer", icon: Send,     href: transferHref },
     ];
     return (
       <div style={{ border: "1px solid #e5e7eb", borderRadius: 16, padding: "24px 28px", marginBottom: 20 }}>
@@ -433,7 +440,7 @@ const OverviewPage = () => {
               </div>,
               <div className="flex gap-2">
                 <Link to="/recharge" className="text-xs px-2 py-1 rounded font-medium" style={{ background: "#22c55e20", color: "#16a34a" }}>Deposit</Link>
-                <Link to="/transfer" className="text-xs px-2 py-1 rounded font-medium" style={{ background: "#3b82f620", color: "#2563eb" }}>Transfer</Link>
+                <Link to="/assets/transfer" className="text-xs px-2 py-1 rounded font-medium" style={{ background: "#3b82f620", color: "#2563eb" }}>Transfer</Link>
               </div>,
             ]} />
           );
@@ -483,7 +490,7 @@ const OverviewPage = () => {
                     <div className="flex gap-2">
                       <Link to="/recharge" className="text-xs font-medium" style={{ color: "#22c55e" }}>Deposit</Link>
                       <span style={{ color: "#ccc" }}>/</span>
-                      <Link to="/transfer" className="text-xs font-medium" style={{ color: "#333" }}>Transfer</Link>
+                      <Link to="/assets/transfer" className="text-xs font-medium" style={{ color: "#333" }}>Transfer</Link>
                     </div>
                   </div>
                 ))}
@@ -501,7 +508,7 @@ const OverviewPage = () => {
       case "Spot Account":
         return (
           <>
-            <BalanceCard accountUsd={spotUsd} />
+            <BalanceCard accountUsd={spotUsd} convertAccount="SPOT" transferAccount="SPOT" />
             <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid #e5e7eb" }}>
               <div className="px-6 pt-5 pb-2"><h3 className="text-lg font-bold" style={{ color: "#111" }}>Holdings</h3></div>
               <WalletTable items={spotWallets} />
@@ -513,7 +520,7 @@ const OverviewPage = () => {
       case "Trading Account":
         return (
           <>
-            <BalanceCard accountUsd={tradingUsd} />
+            <BalanceCard accountUsd={tradingUsd} convertAccount="FUTURES" transferAccount="FUTURES" />
             <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid #e5e7eb" }}>
               <div className="px-6 pt-5 pb-2"><h3 className="text-lg font-bold" style={{ color: "#111" }}>Holdings</h3></div>
               <WalletTable items={tradingWallets} />
@@ -525,7 +532,7 @@ const OverviewPage = () => {
       case "Finance Account":
         return (
           <>
-            <BalanceCard accountUsd={financeUsd} />
+            <BalanceCard accountUsd={financeUsd} convertAccount="EARN" transferAccount="EARN" />
             <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid #e5e7eb" }}>
               <div className="px-6 pt-5 pb-2 flex items-center justify-between">
                 <h3 className="text-lg font-bold" style={{ color: "#111" }}>Holdings (Earn/Staking)</h3>

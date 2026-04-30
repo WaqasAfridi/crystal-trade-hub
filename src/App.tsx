@@ -34,8 +34,6 @@ import FuturesTrading from "./pages/FuturesTrading";
 import AssetsManagement from "./pages/AssetsManagement";
 import Recharge from "./pages/Recharge";
 import Withdraw from "./pages/Withdraw";
-import Conversion from "./pages/Conversion";
-import Transfer from "./pages/Transfer";
 import LotteryRecords from "./pages/LotteryRecords";
 import MobileICO from "./pages/MobileICO";
 import Deposit from "./pages/Deposit";
@@ -177,8 +175,8 @@ const AppRoutes = () => {
           <Route path="/kyc"           element={<ProtectedRoute><KYCVerification /></ProtectedRoute>} />
           <Route path="/recharge"      element={<ProtectedRoute><Recharge /></ProtectedRoute>} />
           <Route path="/withdraw"      element={<ProtectedRoute><Withdraw /></ProtectedRoute>} />
-          <Route path="/conversion"    element={<ProtectedRoute><Conversion /></ProtectedRoute>} />
-          <Route path="/transfer"      element={<ProtectedRoute><Transfer /></ProtectedRoute>} />
+          <Route path="/conversion"    element={<Navigate to="/assets/convert" replace />} />
+          <Route path="/transfer" element={<Navigate to="/assets/transfer" replace />} />
         </Route>
 
         {/* ── Auth pages — no shell ────────────────────────────────────── */}
