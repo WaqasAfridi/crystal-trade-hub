@@ -265,6 +265,7 @@ model Conversion {
   rate         Float
   fee          Float    @default(0)
   status       String   @default("COMPLETED")
+  accountType  String   @default("SPOT")      // SPOT | FUTURES | EARN
   createdAt    DateTime @default(now())
 
   @@index([userId])

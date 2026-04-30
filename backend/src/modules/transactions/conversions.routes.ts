@@ -16,6 +16,7 @@ const quoteSchema = z.object({
   fromSymbol: z.string().toUpperCase(),
   toSymbol: z.string().toUpperCase(),
   fromAmount: z.number().positive(),
+  accountType: z.enum(["SPOT", "FUTURES", "EARN"]).default("SPOT"),
 });
 
 router.post(
@@ -38,13 +39,18 @@ router.post(
   }),
 );
 
-const convertSchema = quoteSchema;
+const convertSchema = z.object({
+  fromSymbol: z.string().toUpperCase(),
+  toSymbol: z.string().toUpperCase(),
+  fromAmount: z.number().positive(),
+  accountType: z.enum(["SPOT", "FUTURES", "EARN"]).default("SPOT"),
+});
 
 router.post(
   "/",
   validate(convertSchema),
   asyncHandler(async (req, res) => {
-    const { fromSymbol, toSymbol, fromAmount } = req.body as z.infer<typeof convertSchema>;
+    const { fromSymbol, toSymbol, fromAmount, accountType } = req.body as z.infer<typeof convertSchema>;
     if (fromSymbol === toSymbol) throw badRequest("Currencies must differ");
 
     const [from, to] = await Promise.all([
@@ -60,12 +66,13 @@ router.post(
     const toAmount = grossTo - fee;
 
     const result = await prisma.$transaction(async (tx) => {
-      await debit(tx, req.userId!, fromSymbol, fromAmount, "SPOT");
-      await credit(tx, req.userId!, toSymbol, toAmount, "SPOT");
+      await debit(tx, req.userId!, fromSymbol, fromAmount, accountType);
+      await credit(tx, req.userId!, toSymbol, toAmount, accountType);
       return tx.conversion.create({
         data: {
           userId: req.userId!,
           fromSymbol, toSymbol, fromAmount, toAmount, rate, fee,
+          accountType,
           status: "COMPLETED",
         },
       });
